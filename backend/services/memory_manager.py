@@ -1,5 +1,5 @@
 from services.buffer_memory import get_messages_for_prompt
-from services.summary_memory import get_summary_context_for_prompt
+from services.summary__memory import get_summary_context_for_prompt
 from services.entity_memory import get_entity_context_for_prompt, extract_entities_from_message
 from services.kg_memory import get_kg_context_for_prompt, extract_triples_from_message
 
