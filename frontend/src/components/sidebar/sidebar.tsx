@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useChatStore } from "../../stores/chatStore"
+import { useChatStore } from "../../stores/chatstore"
 import { conversationsApi } from "../../services/api"
 import {
   Plus, Search, Pin, Trash2,

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react"
-import { useChatStore } from "../../stores/chatStore"
+import { useChatStore } from "../../stores/chatstore"
 import { messagesApi, memoryApi } from "../../services/api"
 import { Send, Bot, User, Zap, MessageSquare } from "lucide-react"
 import ReactMarkdown from "react-markdown"

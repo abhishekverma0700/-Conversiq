@@ -1,5 +1,5 @@
 import { useEffect } from "react"
-import { useChatStore } from "../../stores/chatStore"
+import { useChatStore } from "../../stores/chatstore"
 import { Brain, Network, FileText, Gauge } from "lucide-react"
 import { memoryApi, messagesApi } from "../../services/api"
 import EntityDashboard from "./EntityDashboard"
@@ -34,25 +34,32 @@ export default function MemoryPanel() {
   }, [activeConversation?.id])
 
   const fetchAllMemory = async (convId: number) => {
-    try {
-      const [entitiesRes, graphRes, tokenRes, summaryRes] = await Promise.all([
-        memoryApi.getEntities(convId),
-        memoryApi.getGraph(convId),
-        messagesApi.getTokenInfo(convId),
-        memoryApi.getSummary(convId),
-      ])
+  try {
+    console.log("Fetching memory for conv:", convId)
 
-      setEntities(entitiesRes.data.entities || [])
-      setKgTriples(graphRes.data.triples || [])
-      setTokenInfo(tokenRes.data)
+    const entitiesRes = await memoryApi.getEntities(convId)
+    console.log("Entities:", entitiesRes.data)
+    setEntities(entitiesRes.data.entities || [])
 
-      if (summaryRes.data?.summary_text) {
-        setSummary(summaryRes.data.summary_text)
-      }
-    } catch (err) {
-      console.error("Memory fetch error:", err)
+    const graphRes = await memoryApi.getGraph(convId)
+    console.log("Graph:", graphRes.data)
+    setKgTriples(graphRes.data.triples || [])
+
+    const tokenRes = await messagesApi.getTokenInfo(convId)
+    console.log("Tokens:", tokenRes.data)
+    setTokenInfo(tokenRes.data)
+
+    const summaryRes = await memoryApi.getSummary(convId)
+    console.log("Summary:", summaryRes.data)
+    if (summaryRes.data?.summary_text) {
+      setSummary(summaryRes.data.summary_text)
     }
+
+  } catch (err) {
+    console.error("Memory fetch error:", err)
   }
+}
+      
 
   if (!activeConversation) {
     return (

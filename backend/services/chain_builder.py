@@ -54,10 +54,7 @@ def build_summary_chain(system_prompt: str):
 
 
 def build_entity_chain(system_prompt: str):
-    """
-    Entity memory chain
-    Entity context prompt mein inject hoti hai
-    """
+    """Entity memory chain — entity context prompt mein inject hoti hai"""
     safe_prompt = system_prompt.replace("{", "{{").replace("}", "}}")
 
     full_system = safe_prompt + """
@@ -79,12 +76,10 @@ Use the above facts to give personalized, contextual responses."""
 
 
 def build_kg_chain(system_prompt: str):
-    """
-    Knowledge Graph memory chain
-    KG relationships prompt mein inject hoti hain
-    """
+    """KG memory chain — relationships prompt mein inject hoti hain"""
     safe_prompt = system_prompt.replace("{", "{{").replace("}", "}}")
 
+    # FIX: {kg_context} single curly braces — variable hai, escaped nahi
     full_system = safe_prompt + """
 
 --- Known Relationships ---
@@ -104,10 +99,7 @@ Use these relationships to provide accurate, connected responses."""
 
 
 def classify_intent(user_message: str) -> str:
-    """
-    Sequential chain ka Step 1
-    Message ka intent classify karo
-    """
+    """Sequential chain ka Step 1 — message ka intent classify karo"""
     llm = get_precise_llm()
     prompt = INTENT_CLASSIFICATION_PROMPT.format(message=user_message)
 
@@ -132,29 +124,40 @@ def format_messages_for_langchain(messages: list) -> list:
     return lc_messages
 
 
-def run_conversation_chain(chain, user_message: str, history_messages: list, summary: str = "", entity_context: str = "", kg_context: str = "") -> str:
-    """Chain run karo"""
+def run_conversation_chain(
+    chain,
+    user_message: str,
+    history_messages: list,
+    summary: str = "",
+    entity_context: str = "",
+    kg_context: str = ""
+) -> str:
+    """Chain run karo — type ke hisaab se sahi variables pass karo"""
     lc_history = format_messages_for_langchain(history_messages)
 
     if summary:
+        # Summary chain
         response = chain.invoke({
             "user_message": user_message,
             "recent_history": lc_history,
-            "summary": summary or "No summary yet.",
+            "summary": summary,
         })
     elif entity_context:
+        # Entity chain
         response = chain.invoke({
             "user_message": user_message,
             "history": lc_history,
-            "entity_context": entity_context or "No entities tracked yet.",
+            "entity_context": entity_context,
         })
     elif kg_context:
+        # KG chain
         response = chain.invoke({
             "user_message": user_message,
             "history": lc_history,
-            "kg_context": kg_context or "No relationships tracked yet.",
+            "kg_context": kg_context,
         })
     else:
+        # Buffer chain (entity/kg empty hone pe bhi safe)
         response = chain.invoke({
             "user_message": user_message,
             "history": lc_history,
@@ -163,22 +166,53 @@ def run_conversation_chain(chain, user_message: str, history_messages: list, sum
     return response
 
 
-def run_sequential_chain(system_prompt: str, user_message: str, history_messages: list, conversation_id: int) -> dict:
+def run_entity_chain_safe(chain, user_message: str, history_messages: list, entity_context: str) -> str:
+    """
+    Entity chain ko safely run karo — entity_context empty ho tab bhi kaam kare
+    """
+    lc_history = format_messages_for_langchain(history_messages)
+    response = chain.invoke({
+        "user_message": user_message,
+        "history": lc_history,
+        "entity_context": entity_context if entity_context else "No entities tracked yet.",
+    })
+    return response
+
+
+def run_kg_chain_safe(chain, user_message: str, history_messages: list, kg_context: str) -> str:
+    """
+    KG chain ko safely run karo — kg_context empty ho tab bhi kaam kare
+    """
+    lc_history = format_messages_for_langchain(history_messages)
+    response = chain.invoke({
+        "user_message": user_message,
+        "history": lc_history,
+        "kg_context": kg_context if kg_context else "No relationships tracked yet.",
+    })
+    return response
+
+
+def run_sequential_chain(
+    system_prompt: str,
+    user_message: str,
+    history_messages: list,
+    conversation_id: int
+) -> dict:
     """
     Sequential Chain:
     Step 1: Intent classify karo
-    Step 2: Entity context inject karo
-    Step 3: Response generate karo
-    Step 4: Return sab kuch
+    Step 2: Context fetch karo (entity + kg)
+    Step 3: Sahi chain se response generate karo
+    Step 4: Result return karo
     """
     from services.entity_memory import get_entity_context_for_prompt
     from services.kg_memory import get_kg_context_for_prompt
 
-    
+    # Step 1: Intent
     intent = classify_intent(user_message)
     print(f"Intent: {intent}")
 
-   
+    # Step 2: Context
     entity_context = ""
     kg_context = ""
 
@@ -186,24 +220,16 @@ def run_sequential_chain(system_prompt: str, user_message: str, history_messages
         entity_context = get_entity_context_for_prompt(conversation_id, user_message)
         kg_context = get_kg_context_for_prompt(conversation_id, user_message)
 
-    
+    # Step 3: Response
     if entity_context:
         chain = build_entity_chain(system_prompt)
-        response = run_conversation_chain(
-            chain, user_message, history_messages,
-            entity_context=entity_context
-        )
+        response = run_entity_chain_safe(chain, user_message, history_messages, entity_context)
     elif kg_context:
         chain = build_kg_chain(system_prompt)
-        response = run_conversation_chain(
-            chain, user_message, history_messages,
-            kg_context=kg_context
-        )
+        response = run_kg_chain_safe(chain, user_message, history_messages, kg_context)
     else:
         chain = build_simple_conversation_chain(system_prompt)
-        response = run_conversation_chain(
-            chain, user_message, history_messages
-        )
+        response = run_conversation_chain(chain, user_message, history_messages)
 
     return {
         "response": response,

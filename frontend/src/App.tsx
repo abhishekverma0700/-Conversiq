@@ -1,7 +1,7 @@
 import { useEffect } from "react"
-import { useChatStore } from "./stores/chatStore"
+import { useChatStore } from "./stores/chatstore"
 import { conversationsApi, personasApi } from "./services/api"
-import Sidebar from "./components/sidebar/Sidebar"
+import Sidebar from "./components/sidebar/sidebar"
 import ChatWindow from "./components/chat/ChatWindow"
 import MemoryPanel from "./components/memory/MemoryPanel"
 import TopBar from "./components/ui/TopBar"
@@ -26,6 +26,7 @@ function App() {
         ])
 
         // Conversations set karo
+        console.log("Conversations loaded:", convsRes.data)
         setConversations(convsRes.data)
 
         // Personas set karo
