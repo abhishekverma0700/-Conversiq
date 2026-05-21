@@ -10,7 +10,10 @@ from services.chain_builder import (
     build_entity_chain,
     build_kg_chain,
     run_conversation_chain,
-    run_sequential_chain
+    run_entity_chain_safe,
+    run_kg_chain_safe,
+    run_sequential_chain,
+    format_messages_for_langchain
 )
 from services.context_manager import get_token_budget_status
 
@@ -147,12 +150,12 @@ def send_message(conv_id):
         history_without_current = [m for m in history if m["content"] != user_message]
         kg_context = get_kg_context_for_prompt(conv_id, user_message)
         chain = build_kg_chain(system_prompt)
-        ai_response = run_conversation_chain(
+        ai_response = run_kg_chain_safe(
             chain,
             user_message=user_message,
             history_messages=history_without_current,
             kg_context=kg_context
-        )
+    )
         extract_triples_from_message(conv_id, user_message, saved_msg.id)
         token_info = get_token_budget_status(system_prompt, kg_context, history_without_current)
         extra_info["kg_context"] = kg_context
