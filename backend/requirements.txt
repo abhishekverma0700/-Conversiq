@@ -11,6 +11,6 @@ langchain-community==0.2.16
 
 setuptools
 wheel
-tiktoken==0.7.0
+tiktoken==0.4.0
 networkx==3.3
 sqlalchemy==2.0.35
