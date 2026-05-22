@@ -2,6 +2,7 @@
 
 pip install --upgrade pip==24.0
 pip install setuptools wheel
+pip install gunicorn
 
 pip install --only-binary=:all: tiktoken==0.4.0
 
