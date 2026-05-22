@@ -14,4 +14,3 @@ wheel
 tiktoken==0.7.0
 networkx==3.3
 sqlalchemy==2.0.35
-python-3.11.9
