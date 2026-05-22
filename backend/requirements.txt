@@ -9,7 +9,9 @@ langchain-google-genai==1.0.10
 langchain-core==0.2.38
 langchain-community==0.2.16
 
-
 networkx==3.3
 sqlalchemy==2.0.35
+
+tiktoken==0.5.2
+
 gunicorn==21.0.0
