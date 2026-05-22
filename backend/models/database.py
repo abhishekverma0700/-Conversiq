@@ -8,6 +8,7 @@ class Conversation(db.Model):
     __tablename__ = "conversations"
 
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.String(255), nullable=False, index=True)
     title = db.Column(db.String(200), default="New Chat")
     persona_id = db.Column(db.String(50), default="general_assistant")
     memory_type = db.Column(db.String(50), default="buffer")
@@ -24,6 +25,7 @@ class Conversation(db.Model):
     def to_dict(self):
         return {
             "id": self.id,
+            "user_id": self.user_id,
             "title": self.title,
             "persona_id": self.persona_id,
             "memory_type": self.memory_type,

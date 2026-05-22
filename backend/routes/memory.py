@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify
 from models.database import db, Conversation, Message, Entity, KGTriple, ConversationSummary
+from services.auth import get_authenticated_user_id, get_owned_conversation_or_404
 from services.context_manager import count_messages_tokens, count_tokens
 
 memory_bp = Blueprint("memory", __name__)
@@ -20,7 +21,7 @@ def compare_memory():
     if not conv_id:
         return jsonify({"error": "conversation_id required"}), 400
 
-    conv = Conversation.query.get_or_404(conv_id)
+    conv = get_owned_conversation_or_404(conv_id)
     system_prompt = "You are a helpful assistant. Remember everything the user tells you."
 
     results = {}
@@ -57,14 +58,19 @@ def compare_memory():
 
 @memory_bp.route("/api/entities/search", methods=["GET"])
 def search_entities():
+    user_id = get_authenticated_user_id()
     query = request.args.get("q", "").strip()
 
     if not query:
         return jsonify({"error": "Search query required. Use ?q=keyword"}), 400
 
+    conversation_ids = [c.id for c in Conversation.query.filter_by(user_id=user_id).all()]
+    if not conversation_ids:
+        return jsonify({"query": query, "results": [], "total": 0})
+
     entities = Entity.query.filter(
-        Entity.name.ilike(f"%{query}%") |
-        Entity.description.ilike(f"%{query}%")
+        Entity.conversation_id.in_(conversation_ids),
+        (Entity.name.ilike(f"%{query}%") | Entity.description.ilike(f"%{query}%"))
     ).all()
 
     return jsonify({
@@ -76,13 +82,16 @@ def search_entities():
 
 @memory_bp.route("/api/stats", methods=["GET"])
 def get_stats():
-    total_conversations = Conversation.query.count()
-    total_messages = Message.query.count()
-    total_entities = Entity.query.count()
-    total_triples = KGTriple.query.count()
-    total_summaries = ConversationSummary.query.count()
+    user_id = get_authenticated_user_id()
+    conversation_ids = [c.id for c in Conversation.query.filter_by(user_id=user_id).all()]
 
-    all_messages = Message.query.all()
+    total_conversations = len(conversation_ids)
+    total_messages = Message.query.filter(Message.conversation_id.in_(conversation_ids)).count() if conversation_ids else 0
+    total_entities = Entity.query.filter(Entity.conversation_id.in_(conversation_ids)).count() if conversation_ids else 0
+    total_triples = KGTriple.query.filter(KGTriple.conversation_id.in_(conversation_ids)).count() if conversation_ids else 0
+    total_summaries = ConversationSummary.query.filter(ConversationSummary.conversation_id.in_(conversation_ids)).count() if conversation_ids else 0
+
+    all_messages = Message.query.filter(Message.conversation_id.in_(conversation_ids)).all() if conversation_ids else []
     total_tokens = sum(m.token_count for m in all_messages)
 
     return jsonify({

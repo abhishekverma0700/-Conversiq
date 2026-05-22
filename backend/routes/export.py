@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify
 from models.database import db, Conversation, Message, ConversationSummary, Entity, KGTriple
+from services.auth import get_owned_conversation_or_404, get_authenticated_user_id
 import json
 
 export_bp = Blueprint("export", __name__)
@@ -7,7 +8,7 @@ export_bp = Blueprint("export", __name__)
 
 @export_bp.route("/api/conversations/<int:conv_id>/export", methods=["POST"])
 def export_conversation(conv_id):
-    conv = Conversation.query.get_or_404(conv_id)
+    conv = get_owned_conversation_or_404(conv_id)
     messages = Message.query.filter_by(conversation_id=conv_id).order_by(Message.created_at.asc()).all()
     summary = ConversationSummary.query.filter_by(conversation_id=conv_id).order_by(ConversationSummary.created_at.desc()).first()
     entities = Entity.query.filter_by(conversation_id=conv_id).all()
@@ -52,6 +53,7 @@ def export_conversation(conv_id):
 
 @export_bp.route("/api/conversations/import", methods=["POST"])
 def import_conversation():
+    user_id = get_authenticated_user_id()
     data = request.json or {}
 
     if "conversation" not in data:
@@ -59,6 +61,7 @@ def import_conversation():
 
     conv_data = data["conversation"]
     new_conv = Conversation(
+        user_id=user_id,
         title=conv_data.get("title", "Imported Chat"),
         persona_id=conv_data.get("persona_id", "general_assistant"),
         memory_type=conv_data.get("memory_type", "buffer")

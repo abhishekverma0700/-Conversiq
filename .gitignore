@@ -19,3 +19,10 @@ __pycache__/
 # Windows
 Thumbs.db
 Desktop.ini
+node_modules/
+venv/
+.env
+__pycache__/
+dist/
+build/
+*.pyc

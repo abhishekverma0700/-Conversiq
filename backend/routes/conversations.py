@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify
 from models.database import db, Conversation, Message
+from services.auth import get_authenticated_user_id, get_owned_conversation_or_404
 from services.buffer_memory import get_buffer_messages, save_message, get_messages_for_prompt
 from services.summary__memory import get_summary_context_for_prompt
 from services.entity_memory import extract_entities_from_message, get_entity_context_for_prompt
@@ -22,9 +23,10 @@ conversations_bp = Blueprint("conversations", __name__)
 
 @conversations_bp.route("/api/conversations", methods=["GET"])
 def list_conversations():
+    user_id = get_authenticated_user_id()
     search = request.args.get("search", "")
     show_archived = request.args.get("archived", "false") == "true"
-    query = Conversation.query.filter_by(is_archived=show_archived)
+    query = Conversation.query.filter_by(user_id=user_id, is_archived=show_archived)
     if search:
         query = query.filter(Conversation.title.ilike(f"%{search}%"))
     conversations = query.order_by(
@@ -36,8 +38,14 @@ def list_conversations():
 
 @conversations_bp.route("/api/conversations", methods=["POST"])
 def create_conversation():
+    user_id = get_authenticated_user_id()
     data = request.json or {}
+    requested_user_id = data.get("user_id")
+    if requested_user_id and requested_user_id != user_id:
+        return jsonify({"error": "Cannot create conversations for another user"}), 403
+
     conv = Conversation(
+        user_id=user_id,
         title=data.get("title", "New Chat"),
         persona_id=data.get("persona_id", "general_assistant"),
         memory_type=data.get("memory_type", "buffer")
@@ -49,14 +57,14 @@ def create_conversation():
 
 @conversations_bp.route("/api/conversations/<int:conv_id>", methods=["GET"])
 def get_conversation(conv_id):
-    conv = Conversation.query.get_or_404(conv_id)
+    conv = get_owned_conversation_or_404(conv_id)
     messages = get_buffer_messages(conv_id)
     return jsonify({**conv.to_dict(), "messages": messages})
 
 
 @conversations_bp.route("/api/conversations/<int:conv_id>", methods=["PUT"])
 def update_conversation(conv_id):
-    conv = Conversation.query.get_or_404(conv_id)
+    conv = get_owned_conversation_or_404(conv_id)
     data = request.json or {}
     if "title" in data:
         conv.title = data["title"]
@@ -72,7 +80,7 @@ def update_conversation(conv_id):
 
 @conversations_bp.route("/api/conversations/<int:conv_id>", methods=["DELETE"])
 def delete_conversation(conv_id):
-    conv = Conversation.query.get_or_404(conv_id)
+    conv = get_owned_conversation_or_404(conv_id)
     db.session.delete(conv)
     db.session.commit()
     return jsonify({"message": "Deleted successfully"})
@@ -80,7 +88,7 @@ def delete_conversation(conv_id):
 
 @conversations_bp.route("/api/conversations/<int:conv_id>/message", methods=["POST"])
 def send_message(conv_id):
-    conv = Conversation.query.get_or_404(conv_id)
+    conv = get_owned_conversation_or_404(conv_id)
     data = request.json or {}
     user_message = data.get("message", "").strip()
 
@@ -199,7 +207,7 @@ def send_message(conv_id):
 
 @conversations_bp.route("/api/conversations/<int:conv_id>/tokens", methods=["GET"])
 def get_token_info(conv_id):
-    conv = Conversation.query.get_or_404(conv_id)
+    conv = get_owned_conversation_or_404(conv_id)
     history, _ = get_messages_for_prompt(conv_id)
     system_prompt = get_system_prompt(conv.persona_id)
     token_info = get_token_budget_status(system_prompt, "", history)
@@ -209,7 +217,7 @@ def get_token_info(conv_id):
 @conversations_bp.route("/api/conversations/<int:conv_id>/summary", methods=["GET"])
 def get_summary(conv_id):
     from models.database import ConversationSummary
-    Conversation.query.get_or_404(conv_id)
+    get_owned_conversation_or_404(conv_id)
     summary = ConversationSummary.query.filter_by(
         conversation_id=conv_id
     ).order_by(ConversationSummary.created_at.desc()).first()
@@ -221,7 +229,7 @@ def get_summary(conv_id):
 @conversations_bp.route("/api/conversations/<int:conv_id>/entities", methods=["GET"])
 def get_entities(conv_id):
     from models.database import Entity
-    Conversation.query.get_or_404(conv_id)
+    get_owned_conversation_or_404(conv_id)
     entities = Entity.query.filter_by(
         conversation_id=conv_id
     ).order_by(Entity.updated_at.desc()).all()
@@ -233,7 +241,7 @@ def get_entities(conv_id):
 
 @conversations_bp.route("/api/conversations/<int:conv_id>/graph", methods=["GET"])
 def get_kg_triples(conv_id):
-    Conversation.query.get_or_404(conv_id)
+    get_owned_conversation_or_404(conv_id)
     graph_data = get_graph_data(conv_id)
     from models.database import KGTriple
     triples = KGTriple.query.filter_by(

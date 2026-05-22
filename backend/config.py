@@ -4,6 +4,7 @@ load_dotenv()
 class Config:
     SECRET_KEY=os.getenv("FLASK_SECRET_KEY","dev-secret-key")
     DEBUG=os.getenv("FLASK_DEBUG","True")=="True"
+    SUPABASE_JWT_SECRET=os.getenv("SUPABASE_JWT_SECRET")
 
     SQLALCHEMY_DATABASE_URI=os.getenv("DATABASE_URL","sqlite:///conversional_ai.db")
     SQLALCHEMY_TRACK_MODIFICATIONS=False
