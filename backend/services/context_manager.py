@@ -1,25 +1,19 @@
-import tiktoken
 from config import Config
-
-try:
-    encoder = tiktoken.get_encoding("cl100k_base")
-except Exception:
-    encoder = None
 
 
 def count_tokens(text: str) -> int:
+    """Simple token approximation: ~4 chars per token"""
     if not text:
         return 0
-    if encoder:
-        return len(encoder.encode(text))
-    return len(text) // 4
+    return max(1, len(text) // 4)
 
 
 def count_messages_tokens(messages: list) -> int:
+    """Count tokens for a list of messages"""
     total = 0
     for msg in messages:
-        total += count_tokens(msg.get("content", ""))
-        total += 4
+        content = msg.get("content", "") if isinstance(msg, dict) else str(msg)
+        total += count_tokens(content)
     return total
 
 
