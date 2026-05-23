@@ -48,6 +48,7 @@
     "dompurify": "^3.4.5",
     "lucide-react": "0.487.0",
     "motion": "^12.23.24",
+    "react-force-graph-2d": "^1.29.1",
     "react-hook-form": "7.55.0",
     "react-markdown": "^10.1.0",
     "react-popper": "2.3.0",

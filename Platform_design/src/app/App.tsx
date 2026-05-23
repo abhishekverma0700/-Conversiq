@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import ForceGraph2D from 'react-force-graph-2d'
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "./supabaseClient";
 import {
@@ -58,7 +59,7 @@ import {
 } from "recharts";
 
 // ─── API Configuration ───────────────────────────────────────────────────────
-const API_BASE = "https://conversiq-2.onrender.com/api";
+const API_BASE = "http://localhost:5000/api";
 
 type AuthRequestContext = {
   accessToken?: string | null;
@@ -728,88 +729,36 @@ function MiniGraph({
   edges: GraphEdge[];
 }) {
   return (
-    <svg
-      viewBox="0 0 380 270"
-      className="w-full h-full"
-      style={{ fontFamily: "Inter, sans-serif" }}
-    >
-      <defs>
-        <marker
-          id="arrow"
-          markerWidth="6"
-          markerHeight="6"
-          refX="5"
-          refY="3"
-          orient="auto"
-        >
-          <path d="M0,0 L0,6 L6,3 z" fill="#94A3B8" />
-        </marker>
-      </defs>
-      {edges.map((edge, i) => {
-        const s = nodes.find((n) => n.id === edge.source);
-        const t = nodes.find((n) => n.id === edge.target);
-        if (!s || !t) return null;
-        const mx = (s.x + t.x) / 2;
-        const my = (s.y + t.y) / 2 - 20;
-        return (
-          <g key={i}>
-            <motion.path
-              initial={{ pathLength: 0, opacity: 0 }}
-              animate={{ pathLength: 1, opacity: 1 }}
-              transition={{ duration: 0.8, delay: i * 0.1 }}
-              d={`M${s.x},${s.y} Q${mx},${my} ${t.x},${t.y}`}
-              fill="none"
-              stroke="#C9D2E3"
-              strokeWidth="1.5"
-              markerEnd="url(#arrow)"
-            />
-            <text x={mx} y={my - 4} fill="#64748B" fontSize="8" textAnchor="middle">
-              {edge.label}
-            </text>
-          </g>
-        );
-      })}
-      {nodes.map((node, i) => {
-        const cfg = entityConfig[node.type] || entityConfig.general;
-        return (
-          <motion.g
-            key={node.id}
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{
-              type: "spring",
-              stiffness: 300,
-              damping: 20,
-              delay: i * 0.08,
-            }}
-            style={{ originX: node.x, originY: node.y }}
-          >
-            <circle
-              cx={node.x}
-              cy={node.y}
-              r={22}
-              fill={cfg.color}
-              fillOpacity={0.12}
-              stroke={cfg.color}
-              strokeWidth={1.5}
-            />
-            <circle cx={node.x} cy={node.y} r={14} fill={cfg.color} />
-            <text
-              x={node.x}
-              y={node.y + 28}
-              fill="#475569"
-              fontSize="9"
-              textAnchor="middle"
-              fontWeight="500"
-            >
-              {node.label.length > 10
-                ? node.label.slice(0, 10) + "…"
-                : node.label}
-            </text>
-          </motion.g>
-        );
-      })}
-    </svg>
+    <ForceGraph2D
+      graphData={{
+        nodes: nodes.map((n) => ({
+          id: n.id,
+          label: n.label,
+          type: n.type,
+        })),
+        links: edges.map((e) => ({
+          source: e.source,
+          target: e.target,
+          label: e.label,
+        })),
+      }}
+      nodeLabel="label"
+      nodeColor={(node: any) => {
+        const colors: Record<string, string> = {
+          person: "#6C63FF",
+          org: "#00D4AA",
+          project: "#FF8A65",
+          date: "#EC4899",
+          concept: "#A78BFA",
+        };
+        return colors[node.type] || "#6C63FF";
+      }}
+      linkLabel="label"
+      linkColor={() => "#374151"}
+      backgroundColor="#0F0F1A"
+      width={280}
+      height={220}
+    />
   );
 }
 
@@ -1821,33 +1770,16 @@ function ProfileMenu({
 
 // ─── Stats Screen ─────────────────────────────────────────────────────────
 function StatsScreen({ authContext }: { authContext?: AuthRequestContext }) {
-  const [stats, setStats] = useState<any>(null);
+  const [realStats, setRealStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api
-      .getStats(authContext)
-      .then(setStats)
-      .catch(() => {})
+    fetch(API_BASE + "/stats")
+      .then((res) => res.json())
+      .then((data) => setRealStats(data))
+      .catch((err) => console.error("Stats fetch failed:", err))
       .finally(() => setLoading(false));
-  }, [authContext]);
-
-  const trendData = [
-    { day: "Mon", tokens: 620, messages: 48 },
-    { day: "Tue", tokens: 840, messages: 64 },
-    { day: "Wed", tokens: 770, messages: 52 },
-    { day: "Thu", tokens: 980, messages: 73 },
-    { day: "Fri", tokens: 1120, messages: 81 },
-    { day: "Sat", tokens: 890, messages: 59 },
-    { day: "Sun", tokens: 1020, messages: 68 },
-  ];
-
-  const memoryMixData = [
-    { name: "Buffer", value: 34, color: "#6C63FF" },
-    { name: "Summary", value: 22, color: "#F59E0B" },
-    { name: "Entity", value: 28, color: "#00D4AA" },
-    { name: "KG", value: 16, color: "#FF8A65" },
-  ];
+  }, []);
 
   if (loading) {
     return (
@@ -1860,31 +1792,31 @@ function StatsScreen({ authContext }: { authContext?: AuthRequestContext }) {
   const statCards = [
     {
       label: "Conversations",
-      value: stats?.total_conversations ?? 0,
+      value: realStats?.total_conversations ?? 0,
       icon: MessageCircleMore,
       color: "#6C63FF",
-      delta: `~${stats?.average_messages_per_conversation ?? 0} msgs avg`,
+      delta: `~${realStats?.average_messages_per_conversation ?? 0} msgs avg`,
     },
     {
       label: "Messages",
-      value: stats?.total_messages ?? 0,
+      value: realStats?.total_messages ?? 0,
       icon: Send,
       color: "#00D4AA",
       delta: "Total sent",
     },
     {
       label: "Entities",
-      value: stats?.total_entities ?? 0,
+      value: realStats?.total_entities ?? 0,
       icon: Database,
       color: "#FF8A65",
       delta: "Tracked facts",
     },
     {
-      label: "KG Triples",
-      value: stats?.total_kg_triples ?? 0,
+      label: "Tokens",
+      value: realStats?.total_tokens_used ?? 0,
       icon: Workflow,
       color: "#F59E0B",
-      delta: "Relationships",
+      delta: "Total usage",
     },
   ];
 
@@ -1928,110 +1860,20 @@ function StatsScreen({ authContext }: { authContext?: AuthRequestContext }) {
           ))}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div
-            className="bg-white rounded-xl border border-[#E5E7EB] p-5"
-            style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}
-          >
-            <h3 className="text-[14px] font-semibold text-[#1A1A2E] mb-4">
-              Token Usage Trend (sample)
-            </h3>
-            <div className="h-[260px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart
-                  data={trendData}
-                  margin={{ left: -8, right: 4, top: 8, bottom: 0 }}
-                >
-                  <CartesianGrid stroke="#EEF0F7" strokeDasharray="3 3" />
-                  <XAxis
-                    dataKey="day"
-                    tick={{ fill: "#6B7280", fontSize: 11 }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    tick={{ fill: "#6B7280", fontSize: 11 }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <RechartsTooltip
-                    contentStyle={{ borderRadius: 10, border: "1px solid #E5E7EB" }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="tokens"
-                    stroke="#6C63FF"
-                    strokeWidth={3}
-                    dot={{ r: 3 }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="messages"
-                    stroke="#00D4AA"
-                    strokeWidth={2}
-                    dot={{ r: 2 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          <div
-            className="bg-white rounded-xl border border-[#E5E7EB] p-5"
-            style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}
-          >
-            <h3 className="text-[14px] font-semibold text-[#1A1A2E] mb-4">
-              Memory Distribution
-            </h3>
-            <div className="h-[220px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={memoryMixData}
-                    dataKey="value"
-                    nameKey="name"
-                    innerRadius={52}
-                    outerRadius={85}
-                    paddingAngle={4}
-                  >
-                    {memoryMixData.map((entry) => (
-                      <Cell key={entry.name} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <RechartsTooltip
-                    contentStyle={{ borderRadius: 10, border: "1px solid #E5E7EB" }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="grid grid-cols-2 gap-2 mt-2">
-              {memoryMixData.map((item) => (
-                <div
-                  key={item.name}
-                  className="flex items-center gap-2 text-[11px] text-[#6B7280]"
-                >
-                  <span
-                    className="w-2.5 h-2.5 rounded-full"
-                    style={{ backgroundColor: item.color }}
-                  />
-                  <span>{item.name}</span>
-                  <span className="ml-auto font-medium text-[#1A1A2E]">
-                    {item.value}%
-                  </span>
-                </div>
-              ))}
-            </div>
+        <div className="bg-white rounded-xl border border-[#E5E7EB] p-5" style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
+          <div className="text-center text-gray-400 py-8">
+            Historical chart data coming soon
           </div>
         </div>
 
         {/* Total tokens */}
-        {stats?.total_tokens_used > 0 && (
+        {realStats?.total_tokens_used > 0 && (
           <div className="bg-white rounded-xl border border-[#E5E7EB] p-5">
             <h3 className="text-[14px] font-semibold text-[#1A1A2E] mb-2">
               Total Tokens Consumed
             </h3>
             <div className="text-[32px] font-bold text-[#6C63FF]">
-              {stats.total_tokens_used.toLocaleString()}
+              {realStats.total_tokens_used.toLocaleString()}
             </div>
             <div className="text-[12px] text-[#9CA3AF]">
               across all conversations
@@ -2271,6 +2113,7 @@ export default function App() {
   const handleSendMessage = useCallback(async () => {
     const text = inputValue.trim();
     if (!text || !selectedConvId) return;
+    const streamingId = `streaming-${Date.now()}`;
 
     const userMsg: Message = {
       id: `tmp-${Date.now()}`,
@@ -2279,19 +2122,75 @@ export default function App() {
       timestamp: new Date(),
     };
     setMessages((prev) => [...prev, userMsg]);
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: streamingId,
+        role: "assistant",
+        content: "",
+        timestamp: new Date(),
+      },
+    ]);
     setInputValue("");
     setIsTyping(true);
 
     try {
-      const data = await api.sendMessage(selectedConvId, text, authContext);
+      const authHeaders: Record<string, string> = {};
+      if (authContext?.accessToken) {
+        authHeaders.Authorization = `Bearer ${authContext.accessToken}`;
+      }
+      if (authContext?.userId) {
+        authHeaders["X-User-Id"] = authContext.userId;
+      }
 
-      const aiMsg: Message = {
-        id: `ai-${Date.now()}`,
-        role: "assistant",
-        content: data.response,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, aiMsg]);
+      const response = await fetch(API_BASE + `/conversations/${selectedConvId}/message`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders,
+        },
+        body: JSON.stringify({ message: text }),
+      });
+
+      if (!response.ok || !response.body) {
+        throw new Error("Failed to stream response");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let latestData: any = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const data = line.slice(6);
+            if (data === "[DONE]") break;
+            try {
+              const parsed = JSON.parse(data);
+              latestData = parsed;
+              if (parsed.response) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === streamingId
+                      ? { ...m, content: parsed.response, id: Date.now().toString() }
+                      : m
+                  )
+                );
+              }
+            } catch {
+              // Ignore malformed SSE payloads
+            }
+          }
+        }
+      }
 
       // Update conversation list title
       setConversations((prev) =>
@@ -2308,12 +2207,12 @@ export default function App() {
       );
 
       // Show token warning if near limit
-      if (data.token_info?.is_near_limit) {
+      if (latestData?.token_info?.is_near_limit) {
         showToast("Approaching context limit — memory may compress", "info");
       }
     } catch (err: any) {
       showToast("Failed to get response. Is backend running?", "error");
-      setMessages((prev) => prev.filter((m) => m.id !== userMsg.id));
+      setMessages((prev) => prev.filter((m) => m.id !== userMsg.id && m.id !== streamingId));
     } finally {
       setIsTyping(false);
     }
@@ -3250,94 +3149,36 @@ function GraphScreen({
             </div>
           </div>
         ) : (
-          <svg viewBox="0 0 640 480" className="w-full h-full">
-            <defs>
-              <marker
-                id="arrowFull"
-                markerWidth="8"
-                markerHeight="8"
-                refX="7"
-                refY="4"
-                orient="auto"
-              >
-                <path d="M0,0 L0,8 L8,4 z" fill="#94A3B8" />
-              </marker>
-            </defs>
-            {edges.map((edge, i) => {
-              const s = nodes.find((n) => n.id === edge.source);
-              const t = nodes.find((n) => n.id === edge.target);
-              if (!s || !t) return null;
-              const mx = (s.x + t.x) / 2;
-              const my = (s.y + t.y) / 2 - 30;
-              return (
-                <g key={i}>
-                  <motion.path
-                    initial={{ pathLength: 0, opacity: 0 }}
-                    animate={{ pathLength: 1, opacity: 1 }}
-                    transition={{ duration: 1, delay: i * 0.15 }}
-                    d={`M${s.x},${s.y} Q${mx},${my} ${t.x},${t.y}`}
-                    fill="none"
-                    stroke="#C9D2E3"
-                    strokeWidth="1.8"
-                    markerEnd="url(#arrowFull)"
-                  />
-                  <text x={mx} y={my - 6} fill="#64748B" fontSize="10" textAnchor="middle">
-                    {edge.label}
-                  </text>
-                </g>
-              );
-            })}
-            {nodes.map((node, i) => {
-              const cfg = entityConfig[node.type] || entityConfig.general;
-              return (
-                <motion.g
-                  key={node.id}
-                  initial={{ scale: 0, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{
-                    type: "spring",
-                    stiffness: 250,
-                    damping: 18,
-                    delay: i * 0.1,
-                  }}
-                  style={{ originX: node.x, originY: node.y }}
-                >
-                  <circle
-                    cx={node.x}
-                    cy={node.y}
-                    r={28}
-                    fill={cfg.color}
-                    fillOpacity={0.12}
-                    stroke={cfg.color}
-                    strokeWidth={1.8}
-                  />
-                  <circle cx={node.x} cy={node.y} r={18} fill={cfg.color} />
-                  <text
-                    x={node.x}
-                    y={node.y + 5}
-                    fill="white"
-                    fontSize="9"
-                    textAnchor="middle"
-                    fontWeight="600"
-                  >
-                    {node.label.slice(0, 6)}
-                  </text>
-                  <text
-                    x={node.x}
-                    y={node.y + 42}
-                    fill="#475569"
-                    fontSize="10"
-                    textAnchor="middle"
-                    fontWeight="500"
-                  >
-                    {node.label.length > 12
-                      ? node.label.slice(0, 12) + "…"
-                      : node.label}
-                  </text>
-                </motion.g>
-              );
-            })}
-          </svg>
+          <ForceGraph2D
+            graphData={{
+              nodes: nodes.map((n) => ({
+                id: n.id,
+                label: n.label,
+                type: n.type,
+              })),
+              links: edges.map((e) => ({
+                source: e.source,
+                target: e.target,
+                label: e.label,
+              })),
+            }}
+            nodeLabel="label"
+            nodeColor={(node: any) => {
+              const colors: Record<string, string> = {
+                person: "#6C63FF",
+                org: "#00D4AA",
+                project: "#FF8A65",
+                date: "#EC4899",
+                concept: "#A78BFA",
+              };
+              return colors[node.type] || "#6C63FF";
+            }}
+            linkLabel="label"
+            linkColor={() => "#374151"}
+            backgroundColor="#0F0F1A"
+            width={640}
+            height={480}
+          />
         )}
       </div>
 

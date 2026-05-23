@@ -1,7 +1,7 @@
 import axios from "axios"
 
 // Backend ka URL
-const BASE_URL = "https://conversiq-2.onrender.com/api"
+const BASE_URL = "http://localhost:5000/api"
 
 type AuthRequestContext = {
   accessToken?: string | null
