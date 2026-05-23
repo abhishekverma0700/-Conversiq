@@ -2128,7 +2128,6 @@ export default function App() {
   const handleSendMessage = useCallback(async () => {
     const text = inputValue.trim();
     if (!text || !selectedConvId) return;
-    const streamingId = `streaming-${Date.now()}`;
 
     const userMsg: Message = {
       id: `tmp-${Date.now()}`,
@@ -2137,15 +2136,6 @@ export default function App() {
       timestamp: new Date(),
     };
     setMessages((prev) => [...prev, userMsg]);
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: streamingId,
-        role: "assistant",
-        content: "",
-        timestamp: new Date(),
-      },
-    ]);
     setInputValue("");
     setIsTyping(true);
 
@@ -2167,44 +2157,21 @@ export default function App() {
         body: JSON.stringify({ message: text }),
       });
 
-      if (!response.ok || !response.body) {
-        throw new Error("Failed to stream response");
+      if (!response.ok) {
+        throw new Error("Failed to send message");
       }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let latestData: any = null;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const data = line.slice(6);
-            if (data === "[DONE]") break;
-            try {
-              const parsed = JSON.parse(data);
-              latestData = parsed;
-              if (parsed.response) {
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === streamingId
-                      ? { ...m, content: parsed.response, id: Date.now().toString() }
-                      : m
-                  )
-                );
-              }
-            } catch {
-              // Ignore malformed SSE payloads
-            }
-          }
-        }
+      const data = await response.json();
+      if (data.response) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: (Date.now() + 1).toString(),
+            role: "assistant" as const,
+            content: data.response,
+            timestamp: new Date(),
+          },
+        ]);
       }
 
       // Update conversation list title
@@ -2222,12 +2189,12 @@ export default function App() {
       );
 
       // Show token warning if near limit
-      if (latestData?.token_info?.is_near_limit) {
+      if (data?.token_info?.is_near_limit) {
         showToast("Approaching context limit — memory may compress", "info");
       }
     } catch (err: any) {
       showToast("Failed to get response. Is backend running?", "error");
-      setMessages((prev) => prev.filter((m) => m.id !== userMsg.id && m.id !== streamingId));
+      setMessages((prev) => prev.filter((m) => m.id !== userMsg.id));
     } finally {
       setIsTyping(false);
     }
