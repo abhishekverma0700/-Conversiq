@@ -13,3 +13,4 @@ networkx==3.3
 sqlalchemy==2.0.35
 
 gunicorn==21.0.0
+langchain-groq==0.1.9
