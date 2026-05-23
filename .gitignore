@@ -1,0 +1,28 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Database
+*.db
+*.sqlite3
+
+# Environment variables (API keys kabhi commit mat karo!)
+.env
+
+# VS Code
+.vscode/
+
+# Windows
+Thumbs.db
+Desktop.ini
+node_modules/
+venv/
+.env
+__pycache__/
+dist/
+build/
+*.pyc
