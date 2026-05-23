@@ -36,7 +36,7 @@ If no meaningful triples found, return: {{"triples": []}}"""
 
 def extract_triples_from_message(conversation_id: int, message_content: str, message_id: int = None) -> list:
     """
-    LLM se message mein se KG triples extract karo
+    Extract KG triples from the message using the LLM.
     """
     llm = get_precise_llm()
     prompt = KG_EXTRACTION_PROMPT.format(message=message_content)
@@ -81,7 +81,7 @@ def extract_triples_from_message(conversation_id: int, message_content: str, mes
 
 def save_triple(conversation_id: int, subject: str, predicate: str, object_: str, source_message_id: int = None) -> dict:
     """
-    Triple save karo — duplicate check karo
+    Save the triple and check for duplicates.
     """
     
     existing = KGTriple.query.filter_by(
@@ -107,7 +107,7 @@ def save_triple(conversation_id: int, subject: str, predicate: str, object_: str
 
 
 def get_all_triples(conversation_id: int) -> list:
-    """Conversation ke saare triples lao"""
+    """Fetch all triples for the conversation."""
     triples = KGTriple.query.filter_by(
         conversation_id=conversation_id
     ).order_by(KGTriple.created_at.desc()).all()
@@ -116,7 +116,7 @@ def get_all_triples(conversation_id: int) -> list:
 
 def get_kg_context_for_prompt(conversation_id: int, user_message: str) -> str:
     """
-    Prompt mein inject karne ke liye KG context string return karo
+    Return a KG context string for injection into the prompt.
     """
     all_triples = get_all_triples(conversation_id)
 
@@ -156,7 +156,7 @@ def get_kg_context_for_prompt(conversation_id: int, user_message: str) -> str:
 
 def get_graph_data(conversation_id: int) -> dict:
     """
-    Frontend graph visualization ke liye nodes aur edges return karo
+    Return nodes and edges for frontend graph visualization.
     """
     triples = get_all_triples(conversation_id)
 

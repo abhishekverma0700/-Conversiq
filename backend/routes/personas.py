@@ -2,22 +2,15 @@ from flask import Blueprint, request, jsonify
 import json
 import os
 import uuid
+from models.database import db, Persona
 
 personas_bp = Blueprint("personas", __name__)
-
-# JSON file se load karo
-def load_personas():
-    json_path = os.path.join(os.path.dirname(__file__), "..", "data", "personas.json")
-    with open(json_path, "r") as f:
-        return json.load(f)
-
-BUILTIN_PERSONAS = load_personas()
-custom_personas = []
 
 
 @personas_bp.route("/api/personas", methods=["GET"])
 def list_personas():
-    return jsonify(BUILTIN_PERSONAS + custom_personas)
+    personas = Persona.query.order_by(Persona.name.asc()).all()
+    return jsonify([p.to_dict() for p in personas])
 
 
 @personas_bp.route("/api/personas", methods=["POST"])
@@ -26,45 +19,52 @@ def create_persona():
     if not data.get("name") or not data.get("system_prompt"):
         return jsonify({"error": "name and system_prompt required"}), 400
 
-    new_persona = {
-        "id": str(uuid.uuid4()),
-        "name": data["name"],
-        "description": data.get("description", ""),
-        "system_prompt": data["system_prompt"],
-        "memory_type": data.get("memory_type", "buffer"),
-        "temperature": data.get("temperature", 0.7),
-        "domain": data.get("domain", "general"),
-        "is_builtin": False,
-        "avatar": data.get("avatar", "🎭")
-    }
-    custom_personas.append(new_persona)
-    return jsonify(new_persona), 201
+    persona = Persona(
+        id=str(uuid.uuid4()),
+        name=data["name"],
+        description=data.get("description", ""),
+        system_prompt=data["system_prompt"],
+        memory_type=data.get("memory_type", "buffer"),
+        temperature=float(data.get("temperature", 0.7)),
+        domain=data.get("domain", "general"),
+        avatar=data.get("avatar", "🎭"),
+        is_builtin=False,
+    )
+    db.session.add(persona)
+    db.session.commit()
+    return jsonify(persona.to_dict()), 201
 
 
 @personas_bp.route("/api/personas/<persona_id>", methods=["GET"])
 def get_persona(persona_id):
-    all_personas = BUILTIN_PERSONAS + custom_personas
-    persona = next((p for p in all_personas if p["id"] == persona_id), None)
+    persona = Persona.query.get(persona_id)
     if not persona:
         return jsonify({"error": "Persona not found"}), 404
-    return jsonify(persona)
+    return jsonify(persona.to_dict())
 
 
 @personas_bp.route("/api/personas/<persona_id>", methods=["PUT"])
 def update_persona(persona_id):
-    persona = next((p for p in custom_personas if p["id"] == persona_id), None)
+    persona = Persona.query.get(persona_id)
     if not persona:
-        return jsonify({"error": "Cannot update builtin persona"}), 404
+        return jsonify({"error": "Persona not found"}), 404
+    if persona.is_builtin:
+        return jsonify({"error": "Cannot update builtin persona"}), 400
     data = request.json or {}
-    persona.update({k: v for k, v in data.items() if k != "id"})
-    return jsonify(persona)
+    for key in ["name", "description", "system_prompt", "memory_type", "temperature", "domain", "avatar"]:
+        if key in data:
+            setattr(persona, key, data[key])
+    db.session.commit()
+    return jsonify(persona.to_dict())
 
 
 @personas_bp.route("/api/personas/<persona_id>", methods=["DELETE"])
 def delete_persona(persona_id):
-    global custom_personas
-    builtin_ids = [p["id"] for p in BUILTIN_PERSONAS]
-    if persona_id in builtin_ids:
+    persona = Persona.query.get(persona_id)
+    if not persona:
+        return jsonify({"error": "Persona not found"}), 404
+    if persona.is_builtin:
         return jsonify({"error": "Cannot delete builtin persona"}), 400
-    custom_personas = [p for p in custom_personas if p["id"] != persona_id]
+    db.session.delete(persona)
+    db.session.commit()
     return jsonify({"message": "Deleted successfully"})

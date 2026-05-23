@@ -1,7 +1,12 @@
+import logging
+
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.output_parsers import StrOutputParser
 from services.llm_client import get_chat_llm, get_precise_llm
+
+
+logger = logging.getLogger(__name__)
 
 
 INTENT_CLASSIFICATION_PROMPT = """Classify this message into one category.
@@ -81,7 +86,7 @@ Use these relationships to provide accurate, connected responses."""
 
 
 def classify_intent(user_message: str) -> str:
-    """Message ka intent classify karo"""
+    """Classify the message intent."""
     llm = get_precise_llm()
     prompt = INTENT_CLASSIFICATION_PROMPT.format(message=user_message)
     try:
@@ -90,7 +95,8 @@ def classify_intent(user_message: str) -> str:
         if intent not in ["question", "instruction", "fact", "smalltalk"]:
             intent = "question"
         return intent
-    except:
+    except Exception as e:
+        logger.warning("Intent classification failed: %s", e)
         return "question"
 
 
@@ -113,7 +119,7 @@ def run_conversation_chain(
     entity_context: str = "",
     kg_context: str = ""
 ) -> str:
-    """Chain run karo — type ke hisaab se sahi variables pass karo"""
+    """Run the chain and pass the correct variables based on the type."""
     lc_history = format_messages_for_langchain(history_messages)
 
     if summary:
@@ -169,9 +175,9 @@ def run_sequential_chain(
 ) -> dict:
     """
     Sequential Chain:
-    Step 1: Intent classify karo
-    Step 2: Context fetch karo
-    Step 3: Response generate karo
+    Step 1: Classify intent
+    Step 2: Fetch context
+    Step 3: Generate response
     """
     from services.entity_memory import get_entity_context_for_prompt
     from services.kg_memory import get_kg_context_for_prompt

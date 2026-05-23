@@ -2,7 +2,9 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 class Config:
-    SECRET_KEY=os.getenv("FLASK_SECRET_KEY","dev-secret-key")
+    SECRET_KEY = os.getenv("FLASK_SECRET_KEY")
+    if not SECRET_KEY and not os.getenv("FLASK_DEBUG"):
+        raise RuntimeError("FLASK_SECRET_KEY must be set in production")
     DEBUG=os.getenv("FLASK_DEBUG","True")=="True"
     SUPABASE_JWT_SECRET=os.getenv("SUPABASE_JWT_SECRET")
 
@@ -11,7 +13,7 @@ class Config:
 
     GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-    SUMMARY_INTERVAL=int(os.getenv("SUMMARY_INTENRVAL",5))
+    SUMMARY_INTERVAL=int(os.getenv("SUMMARY_INTERVAL",5))
     MAX_BUFFER_MESSAGES=int(os.getenv("MAX_BUFFER_MESSAGES",20))
 
     TOKEN_BUDGET=int(os.getenv("TOKEN_BUDGET",4000))

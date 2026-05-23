@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "./supabaseClient";
 import {
@@ -56,7 +58,7 @@ import {
 } from "recharts";
 
 // ─── API Configuration ───────────────────────────────────────────────────────
-const API_BASE = "http://localhost:5000/api";
+const API_BASE = "https://conversiq-2.onrender.com/api";
 
 type AuthRequestContext = {
   accessToken?: string | null;
@@ -440,15 +442,7 @@ function formatTime(date: Date | string): string {
   return `${Math.floor(hr / 24)}d ago`;
 }
 
-function parseMarkdown(text: string): string {
-  return text
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    .replace(/`([^`]+)`/g, '<code style="background:#F3F4F6;padding:2px 5px;border-radius:4px;font-size:0.9em">$1</code>')
-    .replace(/\n\n/g, "</p><p>")
-    .replace(/\n- /g, "<br/>• ")
-    .replace(/\n/g, "<br/>");
-}
+
 
 function getUserDisplayName(user: User | null): string {
   if (!user) return "Guest";
@@ -620,25 +614,24 @@ function MessageBubble({
           isUser ? "items-end" : "items-start"
         } flex flex-col gap-1`}
       >
-        <div
-          className={`px-4 py-3 text-[15px] leading-[1.65] ${
-            isUser
-              ? "text-white rounded-[18px_18px_4px_18px]"
-              : "bg-white text-[#1A1A2E] rounded-[12px_18px_18px_18px] border border-[#E5E7EB]"
-          }`}
-          style={
-            isUser
-              ? {
-                  background:
-                    "linear-gradient(135deg, #6C63FF 0%, #00D4AA 100%)",
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-                }
-              : { boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }
-          }
-          dangerouslySetInnerHTML={{
-            __html: `<p>${parseMarkdown(message.content)}</p>`,
-          }}
-        />
+          <div
+            className={`px-4 py-3 text-[15px] leading-[1.65] ${
+              isUser
+                ? "text-white rounded-[18px_18px_4px_18px]"
+                : "bg-white text-[#1A1A2E] rounded-[12px_18px_18px_18px] border border-[#E5E7EB]"
+            }`}
+            style={
+              isUser
+                ? {
+                    background:
+                      "linear-gradient(135deg, #6C63FF 0%, #00D4AA 100%)",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                  }
+                : { boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }
+            }
+          >
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+          </div>
         <span className="text-[11px] text-[#9CA3AF] px-1">
           {new Date(message.timestamp).toLocaleTimeString([], {
             hour: "2-digit",
@@ -1509,6 +1502,7 @@ function AuthField({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
+          required
           className="w-full rounded-2xl border border-[#E5E7EB] bg-white py-3 pl-10 pr-12 text-[14px] text-[#101827] placeholder:text-[#94A3B8] shadow-[0_1px_4px_rgba(15,23,42,0.03)] transition-all focus:border-[#CFCFF7] focus:outline-none focus:ring-2 focus:ring-[#6C63FF]/15"
         />
         {rightSlot}
@@ -1522,11 +1516,13 @@ function AuthScreen({
   onBack,
   onSwitchMode,
   onSubmit,
+  authMessage,
 }: {
   mode: AuthView;
   onBack: () => void;
   onSwitchMode: (mode: AuthView) => void;
   onSubmit: (form: AuthFormValues) => Promise<void> | void;
+  authMessage: { text: string; type: "error" | "success" | "info" } | null;
 }) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -1663,6 +1659,20 @@ function AuthScreen({
                 />
               )}
             </div>
+
+            {authMessage && (
+              <div
+                className={`w-full px-4 py-3 rounded-xl text-sm font-medium text-center ${
+                  authMessage.type === "error"
+                    ? "bg-red-50 text-red-600 border border-red-200"
+                    : authMessage.type === "success"
+                    ? "bg-green-50 text-green-600 border border-green-200"
+                    : "bg-blue-50 text-blue-600 border border-blue-200"
+                }`}
+              >
+                {authMessage.text}
+              </div>
+            )}
 
             <motion.button
               whileTap={{ scale: 0.98 }}
@@ -2057,6 +2067,7 @@ export default function App() {
   const [conversationsLoading, setConversationsLoading] = useState(false);
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
   const [memoryTypeOverride, setMemoryTypeOverride] = useState<MemoryMode | "">("");
+  const [authMessage, setAuthMessage] = useState<{ text: string; type: "error" | "success" | "info" } | null>(null);
 
   // Toast
   const [toast, setToast] = useState<{
@@ -2251,7 +2262,8 @@ export default function App() {
       setSidebarOpen(false);
       showToast("New conversation created", "success");
     } catch {
-      showToast("Failed to create conversation", "error");
+      setAuthMessage({ text: "Please login or register to start a conversation.", type: "error" });
+      setCurrentScreen("login");
     }
   }, [selectedPersona, memoryTypeOverride, user?.id, authContext]);
 
@@ -2418,12 +2430,33 @@ export default function App() {
 
   const handleAuthSubmit = useCallback(
     async (form: AuthFormValues) => {
+      setAuthMessage(null);
       const isRegister = currentScreen === "register";
 
       try {
         if (isRegister) {
+          if (!form.fullName || !form.email || !form.password || !form.confirmPassword) {
+            setAuthMessage({ text: "Please fill in all fields to continue", type: "error" });
+            return;
+          }
+
+          if (!/^[a-zA-Z\s]{2,50}$/.test(form.fullName)) {
+            setAuthMessage({ text: "Please enter a valid name (letters only, minimum 2 characters). Numbers and special characters are not allowed.", type: "error" });
+            return;
+          }
+
+          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+            setAuthMessage({ text: "Please enter a valid email address (e.g. name@example.com)", type: "error" });
+            return;
+          }
+
+          if (form.password.length < 8) {
+            setAuthMessage({ text: "Password must be at least 8 characters long", type: "error" });
+            return;
+          }
+
           if (form.password !== form.confirmPassword) {
-            showToast("Passwords do not match", "error");
+            setAuthMessage({ text: "Passwords do not match. Please try again", type: "error" });
             return;
           }
 
@@ -2438,12 +2471,13 @@ export default function App() {
           });
 
           if (error) {
-            showToast(error.message, "error");
+            setAuthMessage({ text: error.message, type: "error" });
             return;
           }
 
           setSession(data.session ?? null);
           setUser(data.user ?? data.session?.user ?? null);
+          setAuthMessage({ text: "Account created! Please check your email to verify.", type: "success" });
         } else {
           const { data, error } = await supabase.auth.signInWithPassword({
             email: form.email,
@@ -2451,12 +2485,13 @@ export default function App() {
           });
 
           if (error) {
-            showToast(error.message, "error");
+            setAuthMessage({ text: error.message, type: "error" });
             return;
           }
 
           setSession(data.session ?? null);
           setUser(data.user ?? data.session?.user ?? null);
+          setAuthMessage({ text: "Welcome back!", type: "success" });
         }
 
         setIsAuthMenuOpen(false);
@@ -2521,6 +2556,7 @@ export default function App() {
             onBack={() => setCurrentScreen("chat")}
             onSwitchMode={(mode) => setCurrentScreen(mode)}
             onSubmit={handleAuthSubmit}
+            authMessage={authMessage}
           />
         </div>
       </div>

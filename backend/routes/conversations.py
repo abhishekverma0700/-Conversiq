@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from models.database import db, Conversation, Message
 from services.auth import get_authenticated_user_id, get_owned_conversation_or_404
 from services.buffer_memory import get_buffer_messages, save_message, get_messages_for_prompt
-from services.summary__memory import get_summary_context_for_prompt
+from services.summary_memory import get_summary_context_for_prompt
 from services.entity_memory import extract_entities_from_message, get_entity_context_for_prompt
 from services.kg_memory import extract_triples_from_message, get_kg_context_for_prompt, get_graph_data
 from services.chain_builder import (
@@ -142,7 +142,7 @@ def send_message(conv_id):
         entity_context = get_entity_context_for_prompt(conv_id, user_message)
         chain = build_entity_chain(system_prompt)
         
-        # entity_context empty ho tab bhi pass karo
+        # Pass entity_context even when it is empty
         ai_response = chain.invoke({
             "user_message": user_message,
             "history": format_messages_for_langchain(history_without_current),

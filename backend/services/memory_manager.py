@@ -1,13 +1,13 @@
 from services.buffer_memory import get_messages_for_prompt
-from services.summary__memory import get_summary_context_for_prompt
+from services.summary_memory import get_summary_context_for_prompt
 from services.entity_memory import get_entity_context_for_prompt, extract_entities_from_message
 from services.kg_memory import get_kg_context_for_prompt, extract_triples_from_message
 
 
 def get_memory_context(conversation_id: int, memory_type: str, user_message: str) -> dict:
     """
-    Memory type ke hisaab se context return karo.
-    Ek jagah se saari memory types manage hoti hain.
+    Return context based on memory type.
+    All memory types are managed from one place.
     """
     if memory_type == "buffer":
         history, removed = get_messages_for_prompt(conversation_id)
@@ -58,7 +58,7 @@ def get_memory_context(conversation_id: int, memory_type: str, user_message: str
 
 def update_memory_after_message(conversation_id: int, memory_type: str, message_content: str, message_id: int):
     """
-    Message ke baad memory update karo — entities aur triples extract karo.
+    Update memory after a message by extracting entities and triples.
     """
     if memory_type in ["entity", "sequential"]:
         extract_entities_from_message(conversation_id, message_content, message_id)

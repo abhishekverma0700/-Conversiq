@@ -46,7 +46,7 @@ If none relevant, return: []"""
 
 def extract_entities_from_message(conversation_id: int, message_content: str, message_id: int = None) -> list:
     """
-    LLM se message mein se entities extract karo
+    Extract entities from the message using the LLM.
     """
     
     existing = get_all_entities(conversation_id)
@@ -62,7 +62,7 @@ def extract_entities_from_message(conversation_id: int, message_content: str, me
         response = llm.invoke([HumanMessage(content=prompt)])
         raw = response.content.strip()
 
-         # DEBUG — ye terminal mein dikhega
+         # DEBUG — this will appear in the terminal
         print(f"=== ENTITY EXTRACTION ===")
         print(f"Message: {message_content}")
         print(f"LLM Raw Response: {raw}")
@@ -98,7 +98,7 @@ def extract_entities_from_message(conversation_id: int, message_content: str, me
 
 def save_or_update_entity(conversation_id: int, name: str, entity_type: str, description: str, source_message_id: int = None) -> dict:
     """
-    Entity save karo — agar pehle se hai toh update karo
+    Save the entity and update it if it already exists.
     """
     if not name or not name.strip():
         return None
@@ -130,7 +130,7 @@ def save_or_update_entity(conversation_id: int, name: str, entity_type: str, des
 
 
 def get_all_entities(conversation_id: int) -> list:
-    """Conversation ki saari entities lao"""
+    """Fetch all entities for the conversation."""
     entities = Entity.query.filter_by(
         conversation_id=conversation_id
     ).order_by(Entity.updated_at.desc()).all()
@@ -139,7 +139,7 @@ def get_all_entities(conversation_id: int) -> list:
 
 def get_relevant_entities_for_message(conversation_id: int, message: str) -> str:
     """
-    Message ke liye relevant entities dhundo aur inject karne ke liye string banao
+    Find relevant entities for the message and build a string for injection.
     """
     all_entities = get_all_entities(conversation_id)
 
@@ -156,7 +156,7 @@ def get_relevant_entities_for_message(conversation_id: int, message: str) -> str
 
    
     if not relevant and len(all_entities) > 0:
-        relevant = all_entities[:5]  # Top 5 entities inject karo
+        relevant = all_entities[:5]  # Inject the top 5 entities
 
     if not relevant:
         return ""
@@ -171,7 +171,7 @@ def get_relevant_entities_for_message(conversation_id: int, message: str) -> str
 
 def get_entity_context_for_prompt(conversation_id: int, user_message: str) -> str:
     """
-    Prompt mein inject karne ke liye entity context string return karo
+    Return an entity context string for injection into the prompt.
     Token budget: max 500 tokens
     """
     context = get_relevant_entities_for_message(conversation_id, user_message)

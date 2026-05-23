@@ -124,3 +124,29 @@ class KGTriple(db.Model):
             "created_at": self.created_at.isoformat()
         }
     
+
+class Persona(db.Model):
+    __tablename__ = "personas"
+    id = db.Column(db.String(50), primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text, default="")
+    system_prompt = db.Column(db.Text, default="")
+    memory_type = db.Column(db.String(50), default="buffer")
+    temperature = db.Column(db.Float, default=0.7)
+    domain = db.Column(db.String(50), default="general")
+    avatar = db.Column(db.String(10), default="🤖")
+    is_builtin = db.Column(db.Boolean, default=False)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "system_prompt": self.system_prompt,
+            "memory_type": self.memory_type,
+            "temperature": self.temperature,
+            "domain": self.domain,
+            "avatar": self.avatar,
+            "is_builtin": self.is_builtin,
+        }
+    

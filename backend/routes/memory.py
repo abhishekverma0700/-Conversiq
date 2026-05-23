@@ -10,7 +10,7 @@ memory_bp = Blueprint("memory", __name__)
 def compare_memory():
     from services.chain_builder import build_simple_conversation_chain, build_summary_chain, run_conversation_chain
     from services.buffer_memory import get_messages_for_prompt
-    from services.summary__memory import get_summary_context_for_prompt
+    from services.summary_memory import get_summary_context_for_prompt
 
     data = request.json or {}
     conv_id = data.get("conversation_id")
