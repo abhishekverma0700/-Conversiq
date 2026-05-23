@@ -2128,6 +2128,8 @@ export default function App() {
   const handleSendMessage = useCallback(async () => {
     const text = inputValue.trim();
     if (!text || !selectedConvId) return;
+    setIsTyping(false);
+    const streamingId = `msg-${Date.now()}`;
 
     const userMsg: Message = {
       id: `tmp-${Date.now()}`,
@@ -2136,42 +2138,54 @@ export default function App() {
       timestamp: new Date(),
     };
     setMessages((prev) => [...prev, userMsg]);
+    setMessages((prev) => [...prev, {
+      id: streamingId,
+      role: "assistant" as const,
+      content: "",
+      timestamp: new Date()
+    }]);
     setInputValue("");
-    setIsTyping(true);
 
     try {
-      const authHeaders: Record<string, string> = {};
-      if (authContext?.accessToken) {
-        authHeaders.Authorization = `Bearer ${authContext.accessToken}`;
-      }
-      if (authContext?.userId) {
-        authHeaders["X-User-Id"] = authContext.userId;
-      }
-
-      const response = await fetch(API_BASE + `/conversations/${selectedConvId}/message`, {
+      const res = await fetch(API_BASE + `/conversations/${selectedConvId}/message`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...authHeaders,
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {})
         },
         body: JSON.stringify({ message: text }),
       });
 
-      if (!response.ok) {
+      if (!res.ok || !res.body) {
         throw new Error("Failed to send message");
       }
 
-      const data = await response.json();
-      if (data.response) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: (Date.now() + 1).toString(),
-            role: "assistant" as const,
-            content: data.response,
-            timestamp: new Date(),
-          },
-        ]);
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const raw = line.slice(6).trim();
+            if (raw === "[DONE]") break;
+            try {
+              const parsed = JSON.parse(raw);
+              if (parsed.response) {
+                setMessages((prev) => prev.map(m =>
+                  m.id === streamingId
+                    ? { ...m, content: parsed.response }
+                    : m
+                ));
+              }
+            } catch (e) {}
+          }
+        }
       }
 
       // Update conversation list title
@@ -2187,18 +2201,13 @@ export default function App() {
             : c
         )
       );
-
-      // Show token warning if near limit
-      if (data?.token_info?.is_near_limit) {
-        showToast("Approaching context limit — memory may compress", "info");
-      }
     } catch (err: any) {
       showToast("Failed to get response. Is backend running?", "error");
-      setMessages((prev) => prev.filter((m) => m.id !== userMsg.id));
+      setMessages((prev) => prev.filter((m) => m.id !== userMsg.id && m.id !== streamingId));
     } finally {
       setIsTyping(false);
     }
-  }, [inputValue, selectedConvId, authContext]);
+  }, [inputValue, selectedConvId, session]);
 
   // ── Pin conversation ──────────────────────────────────────────────────
   const handlePinConversation = useCallback(

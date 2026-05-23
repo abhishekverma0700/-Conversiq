@@ -1,4 +1,5 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, Response, stream_with_context
+import json
 from models.database import db, Conversation, Message
 from services.auth import get_authenticated_user_id, get_owned_conversation_or_404
 from services.buffer_memory import get_buffer_messages, save_message, get_messages_for_prompt
@@ -197,12 +198,15 @@ def send_message(conv_id):
         conv.title = user_message[:50] + ("..." if len(user_message) > 50 else "")
         db.session.commit()
 
-    return jsonify({
-        "response": ai_response,
-        "token_info": token_info,
-        "memory_type": memory_type,
-        **extra_info
-    })
+    def generate():
+        yield f"data: {json.dumps({'response': ai_response, 'token_info': token_info, 'memory_type': memory_type, **extra_info})}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return Response(
+        stream_with_context(generate()),
+        content_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+    )
 
 
 @conversations_bp.route("/api/conversations/<int:conv_id>/tokens", methods=["GET"])
