@@ -59,7 +59,7 @@ import {
 } from "recharts";
 
 // ─── API Configuration ───────────────────────────────────────────────────────
-const API_BASE = "http://localhost:5000/api";
+const API_BASE = "https://conversiq-2.onrender.com/api";
 
 type AuthRequestContext = {
   accessToken?: string | null;
@@ -371,6 +371,18 @@ interface Persona {
   system_prompt?: string;
   temperature?: number;
 }
+
+const DEFAULT_GENERAL_ASSISTANT_PERSONA: Persona = {
+  id: "general_assistant",
+  name: "General Assistant",
+  description: "Helpful all-purpose assistant for everyday tasks",
+  domain: "general",
+  memory_type: "buffer",
+  avatar: "🤖",
+  is_builtin: true,
+  system_prompt: "You are a helpful, friendly AI assistant. Remember everything the user tells you and use it to provide personalized, contextual responses.",
+  temperature: 0.7,
+};
 
 interface TokenInfo {
   system_prompt_tokens: number;
@@ -1895,7 +1907,7 @@ export default function App() {
   const [isTyping, setIsTyping] = useState(false);
   const [activeTab, setActiveTab] = useState<MemoryTab>("entities");
   const [personas, setPersonas] = useState<Persona[]>([]);
-  const [selectedPersona, setSelectedPersona] = useState<Persona | null>(null);
+  const [selectedPersona, setSelectedPersona] = useState<Persona | null>(DEFAULT_GENERAL_ASSISTANT_PERSONA);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isDesktop, setIsDesktop] = useState(() => window.innerWidth >= 1024);
@@ -1980,7 +1992,7 @@ export default function App() {
           screen === "login" || screen === "register" ? "chat" : screen
         );
       } else {
-        setCurrentScreen("login");
+        setCurrentScreen("chat");
         setSelectedConvId(null);
         setMessages([]);
       }
@@ -2003,7 +2015,14 @@ export default function App() {
       .listPersonas()
       .then((data) => {
         setPersonas(data);
-        if (data.length > 0) setSelectedPersona(data[0]);
+        let defaultPersona = DEFAULT_GENERAL_ASSISTANT_PERSONA;
+        for (const persona of data as Persona[]) {
+          if (persona.id === "general_assistant" || persona.name === "General Assistant") {
+            defaultPersona = persona;
+            break;
+          }
+        }
+        setSelectedPersona(defaultPersona);
       })
       .catch(() => {});
   }, []);
@@ -2030,9 +2049,6 @@ export default function App() {
       setConversations([]);
       setSelectedConvId(null);
       setMessages([]);
-      setCurrentScreen((screen) =>
-        screen === "login" || screen === "register" ? screen : "login"
-      );
     }
   }, [isAuthenticated]);
 
@@ -2094,7 +2110,7 @@ export default function App() {
       const conv = await api.createConversation({
         title: "New Chat",
         persona_id: selectedPersona?.id || "general_assistant",
-        memory_type: memoryTypeOverride || selectedPersona?.memory_type || "buffer",
+        memory_type: memoryTypeOverride || "buffer",
         user_id: user?.id,
       }, authContext);
       setConversations((prev) => [conv, ...prev]);
@@ -2104,8 +2120,7 @@ export default function App() {
       setSidebarOpen(false);
       showToast("New conversation created", "success");
     } catch {
-      setAuthMessage({ text: "Please login or register to start a conversation.", type: "error" });
-      setCurrentScreen("login");
+      showToast("Please login or register to start a conversation.", "error");
     }
   }, [selectedPersona, memoryTypeOverride, user?.id, authContext]);
 
@@ -2416,7 +2431,7 @@ export default function App() {
       setSelectedConvId(null);
       setMessages([]);
       setIsAuthMenuOpen(false);
-      setCurrentScreen("login");
+      setCurrentScreen("chat");
       showToast("Logged out", "info");
     } catch {
       showToast("Logout failed", "error");
