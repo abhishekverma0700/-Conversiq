@@ -1,8 +1,15 @@
-const API_BASE = "https://conversiq-2.onrender.com/api";
+const API_BASE = "http://localhost:5000/api";
 
 export type AuthRequestContext = {
   accessToken?: string | null;
   userId?: string | null;
+};
+
+export type StreamEventHandlers = {
+  onThinking?: () => void;
+  onChunk?: (chunk: string) => void;
+  onDone?: (payload: any) => void;
+  onError?: (message: string) => void;
 };
 
 function buildAuthHeaders(auth?: AuthRequestContext): HeadersInit {
@@ -86,6 +93,88 @@ export const api = {
     });
     if (!res.ok) throw new Error("Failed to send message");
     return res.json();
+  },
+
+  sendMessageStream: async (
+    convId: number,
+    message: string,
+    auth?: AuthRequestContext,
+    handlers?: StreamEventHandlers,
+    signal?: AbortSignal
+  ) => {
+    const res = await fetch(`${API_BASE}/conversations/${convId}/message/stream`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+        ...buildAuthHeaders(auth),
+      },
+      body: JSON.stringify({ message }),
+      signal,
+    });
+
+    if (!res.ok) {
+      throw new Error("Failed to start response stream");
+    }
+
+    if (!res.body) {
+      throw new Error("No stream body available");
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+
+    const parseEventBlock = (block: string) => {
+      const lines = block.split("\n");
+      let event = "message";
+      const dataLines: string[] = [];
+
+      for (const line of lines) {
+        if (line.startsWith("event:")) {
+          event = line.slice(6).trim();
+        } else if (line.startsWith("data:")) {
+          dataLines.push(line.slice(5).trim());
+        }
+      }
+
+      const rawData = dataLines.join("\n");
+      if (!rawData) return;
+
+      let payload: any = {};
+      try {
+        payload = JSON.parse(rawData);
+      } catch {
+        payload = { message: rawData };
+      }
+
+      if (event === "thinking") {
+        handlers?.onThinking?.();
+      } else if (event === "token") {
+        handlers?.onChunk?.(payload.chunk || "");
+      } else if (event === "done") {
+        handlers?.onDone?.(payload);
+      } else if (event === "error") {
+        handlers?.onError?.(payload.error || "Streaming error");
+      }
+    };
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const blocks = buffer.split("\n\n");
+      buffer = blocks.pop() || "";
+
+      for (const block of blocks) {
+        parseEventBlock(block.trim());
+      }
+    }
+
+    if (buffer.trim()) {
+      parseEventBlock(buffer.trim());
+    }
   },
 
   getEntities: async (convId: number, auth?: AuthRequestContext) => {

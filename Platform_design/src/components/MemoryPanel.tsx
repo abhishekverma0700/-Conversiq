@@ -11,11 +11,13 @@ export default function MemoryPanel({
   activeTab,
   setActiveTab,
   conversationId,
+  refreshKey,
   authContext,
 }: {
   activeTab: MemoryTab;
   setActiveTab: (t: MemoryTab) => void;
   conversationId: number | null;
+  refreshKey?: number;
   authContext?: AuthRequestContext;
 }) {
   const [entities, setEntities] = useState<Entity[]>([]);
@@ -28,59 +30,61 @@ export default function MemoryPanel({
   const [tokenInfo, setTokenInfo] = useState<TokenInfo | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const fetchTabData = useCallback(async () => {
+  const toGraphData = useCallback((allTriples: KGTriple[]) => {
+    const nodeMap: Record<string, GraphNode> = {};
+    const edges: GraphEdge[] = [];
+    let nodeIdx = 0;
+    allTriples.forEach((t: KGTriple) => {
+      if (!nodeMap[t.subject]) {
+        nodeMap[t.subject] = {
+          id: t.subject,
+          label: t.subject,
+          type: "concept",
+          x: 60 + (nodeIdx % 5) * 70,
+          y: 60 + Math.floor(nodeIdx / 5) * 70,
+        };
+        nodeIdx++;
+      }
+      if (!nodeMap[t.object]) {
+        nodeMap[t.object] = {
+          id: t.object,
+          label: t.object,
+          type: "concept",
+          x: 60 + (nodeIdx % 5) * 70,
+          y: 60 + Math.floor(nodeIdx / 5) * 70,
+        };
+        nodeIdx++;
+      }
+      edges.push({ source: t.subject, target: t.object, label: t.predicate });
+    });
+    return { nodes: Object.values(nodeMap), edges };
+  }, []);
+
+  const fetchAllData = useCallback(async () => {
     if (!conversationId) return;
     setLoading(true);
     try {
-      if (activeTab === "entities") {
-        const data = await api.getEntities(conversationId, authContext);
-        setEntities(data.entities || []);
-      } else if (activeTab === "graph") {
-        const data = await api.getGraph(conversationId, authContext);
-        setTriples(data.triples || []);
-        const nodeMap: Record<string, GraphNode> = {};
-        const edges: GraphEdge[] = [];
-        let nodeIdx = 0;
-        (data.triples || []).forEach((t: KGTriple) => {
-          if (!nodeMap[t.subject]) {
-            nodeMap[t.subject] = {
-              id: t.subject,
-              label: t.subject,
-              type: "concept",
-              x: 60 + (nodeIdx % 5) * 70,
-              y: 60 + Math.floor(nodeIdx / 5) * 70,
-            };
-            nodeIdx++;
-          }
-          if (!nodeMap[t.object]) {
-            nodeMap[t.object] = {
-              id: t.object,
-              label: t.object,
-              type: "concept",
-              x: 60 + (nodeIdx % 5) * 70,
-              y: 60 + Math.floor(nodeIdx / 5) * 70,
-            };
-            nodeIdx++;
-          }
-          edges.push({ source: t.subject, target: t.object, label: t.predicate });
-        });
-        setGraphData({ nodes: Object.values(nodeMap), edges });
-      } else if (activeTab === "summary") {
-        const data = await api.getSummary(conversationId, authContext);
-        setSummary(data.summary_text || null);
-      } else if (activeTab === "tokens") {
-        const data = await api.getTokenInfo(conversationId, authContext);
-        setTokenInfo(data);
-      }
+      const [entitiesRes, graphRes, summaryRes, tokenRes] = await Promise.all([
+        api.getEntities(conversationId, authContext),
+        api.getGraph(conversationId, authContext),
+        api.getSummary(conversationId, authContext),
+        api.getTokenInfo(conversationId, authContext),
+      ]);
+
+      setEntities(entitiesRes.entities || []);
+      setTriples(graphRes.triples || []);
+      setGraphData(toGraphData(graphRes.triples || []));
+      setSummary(summaryRes.summary_text || null);
+      setTokenInfo(tokenRes);
     } catch {
     } finally {
       setLoading(false);
     }
-  }, [conversationId, activeTab, authContext]);
+  }, [conversationId, authContext, toGraphData]);
 
   useEffect(() => {
-    fetchTabData();
-  }, [fetchTabData]);
+    fetchAllData();
+  }, [fetchAllData, refreshKey]);
 
   const tabs: { id: MemoryTab; icon: React.ElementType; label: string }[] = [
     { id: "entities", icon: Database, label: "Entities" },
@@ -107,7 +111,7 @@ export default function MemoryPanel({
           </div>
         </div>
         <button
-          onClick={fetchTabData}
+          onClick={fetchAllData}
           className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[11px] text-[#6B7280] hover:text-[#7A1F2B] hover:bg-[#F7E9EB] rounded-lg transition-colors mb-2"
         >
           <RefreshCw className="w-3 h-3" />
@@ -256,7 +260,7 @@ export default function MemoryPanel({
                 )}
                 <div className="flex items-center gap-2 text-[11px] text-[#9CA3AF]">
                   <Clock className="w-3 h-3" />
-                  <span>Auto-updates every 5 messages</span>
+                  <span>Updates after assistant responses</span>
                 </div>
               </motion.div>
             )}

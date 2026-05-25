@@ -10,9 +10,25 @@ import json
 logger = logging.getLogger(__name__)
 
 
-KG_EXTRACTION_PROMPT = """You are a knowledge graph builder. Extract relationship triples from this message.
+_GENERIC_TRIPLE_TERMS = {
+    "user",
+    "assistant",
+    "hello",
+    "hi",
+    "hey",
+    "thanks",
+    "thank you",
+    "message",
+    "response",
+    "conversation",
+    "said",
+    "says",
+}
 
-Message: {message}
+
+KG_EXTRACTION_PROMPT = """You are a knowledge graph builder. Extract relationship triples from the AI's final response text.
+
+AI response: {message}
 
 Extract meaningful subject-predicate-object triples.
 Good examples:
@@ -24,6 +40,12 @@ Good examples:
 Bad examples (too generic):
 - (user, said, hello)
 - (person, has, name)
+
+STRICT RULES:
+1. Extract only useful, meaningful relationships explicitly stated in the AI response
+2. Ignore filler words, greetings, and generic conversational text
+3. Avoid duplicate or near-duplicate triples
+4. Prefer concrete entities and useful domain relationships over generic phrases
 
 Return ONLY a JSON object (no other text):
 {{
@@ -40,9 +62,7 @@ If no meaningful triples found, return: {{"triples": []}}"""
 
 
 def extract_triples_from_message(conversation_id: int, message_content: str, message_id: int = None) -> list:
-    """
-    Extract KG triples from the message using the LLM.
-    """
+    """Extract KG triples from the AI response using the LLM."""
     llm = get_precise_llm()
     prompt = KG_EXTRACTION_PROMPT.format(message=message_content)
 
@@ -61,21 +81,27 @@ def extract_triples_from_message(conversation_id: int, message_content: str, mes
 
         
         saved = []
+        seen_triples = set()
         for triple in triples:
             subject = triple.get("subject", "").strip()
             predicate = triple.get("predicate", "").strip()
             obj = triple.get("object", "").strip()
 
-            if subject and predicate and obj:
-                saved_triple = save_triple(
-                    conversation_id=conversation_id,
-                    subject=subject,
-                    predicate=predicate,
-                    object_=obj,
-                    source_message_id=message_id
-                )
-                if saved_triple:
-                    saved.append(saved_triple)
+            normalized_key = _normalize_triple_key(subject, predicate, obj)
+            if not subject or not predicate or not obj:
+                continue
+            if _should_skip_triple(subject, predicate, obj) or normalized_key in seen_triples:
+                continue
+            seen_triples.add(normalized_key)
+            saved_triple = save_triple(
+                conversation_id=conversation_id,
+                subject=subject,
+                predicate=predicate,
+                object_=obj,
+                source_message_id=message_id
+            )
+            if saved_triple:
+                saved.append(saved_triple)
 
         return saved
 
@@ -89,11 +115,11 @@ def save_triple(conversation_id: int, subject: str, predicate: str, object_: str
     Save the triple and check for duplicates.
     """
     
-    existing = KGTriple.query.filter_by(
-        conversation_id=conversation_id,
-        subject=subject,
-        predicate=predicate,
-        object=object_
+    existing = KGTriple.query.filter(
+        KGTriple.conversation_id == conversation_id,
+        db.func.lower(KGTriple.subject) == subject.lower(),
+        db.func.lower(KGTriple.predicate) == predicate.lower(),
+        db.func.lower(KGTriple.object) == object_.lower()
     ).first()
 
     if existing:
@@ -109,6 +135,30 @@ def save_triple(conversation_id: int, subject: str, predicate: str, object_: str
     db.session.add(triple)
     db.session.commit()
     return triple.to_dict()
+
+
+def _normalize_triple_key(subject: str, predicate: str, object_: str) -> tuple:
+    return (
+        " ".join(subject.lower().split()),
+        " ".join(predicate.lower().split()),
+        " ".join(object_.lower().split()),
+    )
+
+
+def _should_skip_triple(subject: str, predicate: str, object_: str) -> bool:
+    normalized_subject = " ".join(subject.lower().split())
+    normalized_predicate = " ".join(predicate.lower().split())
+    normalized_object = " ".join(object_.lower().split())
+
+    if not normalized_subject or not normalized_predicate or not normalized_object:
+        return True
+    if normalized_subject in _GENERIC_TRIPLE_TERMS:
+        return True
+    if normalized_object in _GENERIC_TRIPLE_TERMS:
+        return True
+    if normalized_predicate in _GENERIC_TRIPLE_TERMS:
+        return True
+    return False
 
 
 def get_all_triples(conversation_id: int) -> list:
@@ -138,9 +188,6 @@ def get_kg_context_for_prompt(conversation_id: int, user_message: str) -> str:
             relevant.append(triple)
 
     
-    if not relevant:
-        relevant = all_triples[:10]
-
     if not relevant:
         return ""
 

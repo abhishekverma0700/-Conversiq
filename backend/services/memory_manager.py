@@ -1,5 +1,5 @@
 from services.buffer_memory import get_messages_for_prompt
-from services.summary_memory import get_summary_context_for_prompt
+from services.summary_memory import get_summary_context_for_prompt, update_summary_from_ai_response
 from services.entity_memory import get_entity_context_for_prompt, extract_entities_from_message
 from services.kg_memory import get_kg_context_for_prompt, extract_triples_from_message
 
@@ -58,13 +58,18 @@ def get_memory_context(conversation_id: int, memory_type: str, user_message: str
 
 def update_memory_after_message(conversation_id: int, memory_type: str, message_content: str, message_id: int):
     """
-    Update memory after a message by extracting entities and triples.
+    Update memory after an assistant message.
+    Sequential mode runs entity extraction, KG extraction, and summary update
+    from the same assistant response source.
     """
     if memory_type in ["entity", "sequential"]:
         extract_entities_from_message(conversation_id, message_content, message_id)
 
     if memory_type in ["kg", "sequential"]:
         extract_triples_from_message(conversation_id, message_content, message_id)
+
+    if memory_type in ["summary", "sequential"]:
+        update_summary_from_ai_response(conversation_id, message_id)
 
     if memory_type == "hybrid":
         extract_entities_from_message(conversation_id, message_content, message_id)

@@ -95,12 +95,6 @@ export default function StatsScreen({ authContext }: { authContext?: AuthRequest
           ))}
         </div>
 
-        <div className="bg-white rounded-xl border border-[#E5E7EB] p-5" style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
-          <div className="text-center text-gray-400 py-8">
-            Historical chart data coming soon
-          </div>
-        </div>
-
         {realStats?.total_tokens_used > 0 && (
           <div className="bg-white rounded-xl border border-[#E5E7EB] p-5">
             <h3 className="text-[14px] font-semibold text-[#1A1A2E] mb-2">

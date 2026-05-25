@@ -1,10 +1,11 @@
 import logging
+import json
 
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, Response, stream_with_context
 from models.database import db, Conversation, Message
 from services.auth import get_authenticated_user_id, get_owned_conversation_or_404
 from services.buffer_memory import get_buffer_messages, save_message, get_messages_for_prompt
-from services.summary_memory import get_summary_context_for_prompt
+from services.summary_memory import get_summary_context_for_prompt, update_summary_from_ai_response
 from services.entity_memory import extract_entities_from_message, get_entity_context_for_prompt
 from services.kg_memory import extract_triples_from_message, get_kg_context_for_prompt, get_graph_data
 from services.chain_builder import (
@@ -16,7 +17,8 @@ from services.chain_builder import (
     run_entity_chain_safe,
     run_kg_chain_safe,
     run_sequential_chain,
-    format_messages_for_langchain
+    format_messages_for_langchain,
+    classify_intent
 )
 from services.context_manager import get_token_budget_status
 
@@ -24,6 +26,16 @@ from services.context_manager import get_token_budget_status
 logger = logging.getLogger(__name__)
 
 conversations_bp = Blueprint("conversations", __name__)
+
+
+def _sse_event(event: str, payload: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
+
+
+def _trim_current_user_from_history(history: list, user_message: str) -> list:
+    if history and history[-1]["content"] == user_message and history[-1]["role"] == "user":
+        return history[:-1]
+    return history
 
 
 @conversations_bp.route("/api/conversations", methods=["GET"])
@@ -100,7 +112,7 @@ def send_message(conv_id):
     if not user_message:
         return jsonify({"error": "Message cannot be empty"}), 400
 
-    saved_msg = save_message(conv_id, "user", user_message)
+    save_message(conv_id, "user", user_message)
     system_prompt = get_system_prompt(conv.persona_id)
     memory_type = conv.memory_type
     ai_response = ""
@@ -168,8 +180,6 @@ def send_message(conv_id):
             "history": format_messages_for_langchain(history_without_current),
             "entity_context": entity_context if entity_context else "No entities tracked yet.",
     })
-    
-        extract_entities_from_message(conv_id, user_message, saved_msg.id)
         token_info = get_token_budget_status(system_prompt, entity_context, history_without_current)
         extra_info["entity_context"] = entity_context
 
@@ -189,7 +199,6 @@ def send_message(conv_id):
             history_messages=history_without_current,
             kg_context=kg_context
     )
-        extract_triples_from_message(conv_id, user_message, saved_msg.id)
         token_info = get_token_budget_status(system_prompt, kg_context, history_without_current)
         extra_info["kg_context"] = kg_context
 
@@ -210,8 +219,6 @@ def send_message(conv_id):
         ai_response = result["response"]
         extra_info["intent"] = result["intent"]
         extra_info["entity_context"] = result["entity_context"]
-        extract_entities_from_message(conv_id, user_message, saved_msg.id)
-        extract_triples_from_message(conv_id, user_message, saved_msg.id)
         token_info = get_token_budget_status(system_prompt, "", history_without_current)
 
     else:
@@ -221,7 +228,24 @@ def send_message(conv_id):
         ai_response = run_conversation_chain(chain, user_message, history_without_current)
         token_info = {}
 
-    save_message(conv_id, "assistant", ai_response)
+    assistant_msg = save_message(conv_id, "assistant", ai_response)
+
+    if memory_type == "entity":
+        extract_entities_from_message(conv_id, ai_response, assistant_msg.id)
+    elif memory_type == "kg":
+        extract_triples_from_message(conv_id, ai_response, assistant_msg.id)
+    elif memory_type == "sequential":
+        extract_entities_from_message(conv_id, ai_response, assistant_msg.id)
+        extract_triples_from_message(conv_id, ai_response, assistant_msg.id)
+
+    # After assistant response is saved, update summary memory using the same AI response.
+    try:
+        if memory_type in ["summary", "sequential"]:
+            updated_summary = update_summary_from_ai_response(conv_id, assistant_msg.id)
+            if updated_summary:
+                extra_info["summary"] = updated_summary.summary_text
+    except Exception:
+        logger.exception("Failed to update summary for conversation %s", conv_id)
 
     if conv.title == "New Chat":
         conv.title = user_message[:50] + ("..." if len(user_message) > 50 else "")
@@ -233,6 +257,189 @@ def send_message(conv_id):
         "memory_type": memory_type,
         **extra_info
     })
+
+
+@conversations_bp.route("/api/conversations/<int:conv_id>/message/stream", methods=["POST"])
+def stream_message(conv_id):
+    conv = get_owned_conversation_or_404(conv_id)
+    data = request.json or {}
+    user_message = data.get("message", "").strip()
+
+    if not user_message:
+        return jsonify({"error": "Message cannot be empty"}), 400
+
+    save_message(conv_id, "user", user_message)
+
+    system_prompt = get_system_prompt(conv.persona_id)
+    memory_type = conv.memory_type
+    token_info = {}
+    extra_info = {}
+
+    chain = None
+    stream_input = {}
+
+    if memory_type == "buffer":
+        history, removed = get_messages_for_prompt(conv_id)
+        history_without_current = _trim_current_user_from_history(history, user_message)
+        chain = build_simple_conversation_chain(system_prompt)
+        stream_input = {
+            "user_message": user_message,
+            "history": format_messages_for_langchain(history_without_current),
+        }
+        token_info = get_token_budget_status(system_prompt, "", history_without_current)
+        if removed > 0:
+            token_info["truncated_messages"] = removed
+
+    elif memory_type == "summary":
+        summary, recent_msgs = get_summary_context_for_prompt(conv_id)
+        recent_without_current = _trim_current_user_from_history(recent_msgs, user_message)
+        if summary:
+            chain = build_summary_chain(system_prompt)
+            stream_input = {
+                "user_message": user_message,
+                "recent_history": format_messages_for_langchain(recent_without_current),
+                "summary": summary,
+            }
+        else:
+            chain = build_simple_conversation_chain(system_prompt)
+            stream_input = {
+                "user_message": user_message,
+                "history": format_messages_for_langchain(recent_without_current),
+            }
+        token_info = get_token_budget_status(system_prompt, summary or "", recent_without_current)
+        extra_info["summary"] = summary
+
+    elif memory_type == "entity":
+        history, _ = get_messages_for_prompt(conv_id)
+        history_without_current = _trim_current_user_from_history(history, user_message)
+        entity_context = get_entity_context_for_prompt(conv_id, user_message)
+        chain = build_entity_chain(system_prompt)
+        stream_input = {
+            "user_message": user_message,
+            "history": format_messages_for_langchain(history_without_current),
+            "entity_context": entity_context if entity_context else "No entities tracked yet.",
+        }
+        token_info = get_token_budget_status(system_prompt, entity_context, history_without_current)
+        extra_info["entity_context"] = entity_context
+
+    elif memory_type == "kg":
+        history, _ = get_messages_for_prompt(conv_id)
+        history_without_current = _trim_current_user_from_history(history, user_message)
+        kg_context = get_kg_context_for_prompt(conv_id, user_message)
+        chain = build_kg_chain(system_prompt)
+        stream_input = {
+            "user_message": user_message,
+            "history": format_messages_for_langchain(history_without_current),
+            "kg_context": kg_context if kg_context else "No relationships tracked yet.",
+        }
+        token_info = get_token_budget_status(system_prompt, kg_context, history_without_current)
+        extra_info["kg_context"] = kg_context
+
+    elif memory_type == "sequential":
+        history, _ = get_messages_for_prompt(conv_id)
+        history_without_current = _trim_current_user_from_history(history, user_message)
+
+        intent = classify_intent(user_message)
+        extra_info["intent"] = intent
+
+        entity_context = ""
+        kg_context = ""
+        if intent in ["question", "fact"]:
+            entity_context = get_entity_context_for_prompt(conv_id, user_message)
+            kg_context = get_kg_context_for_prompt(conv_id, user_message)
+
+        if entity_context:
+            chain = build_entity_chain(system_prompt)
+            stream_input = {
+                "user_message": user_message,
+                "history": format_messages_for_langchain(history_without_current),
+                "entity_context": entity_context,
+            }
+            extra_info["entity_context"] = entity_context
+        elif kg_context:
+            chain = build_kg_chain(system_prompt)
+            stream_input = {
+                "user_message": user_message,
+                "history": format_messages_for_langchain(history_without_current),
+                "kg_context": kg_context,
+            }
+            extra_info["kg_context"] = kg_context
+        else:
+            chain = build_simple_conversation_chain(system_prompt)
+            stream_input = {
+                "user_message": user_message,
+                "history": format_messages_for_langchain(history_without_current),
+            }
+
+        token_info = get_token_budget_status(system_prompt, "", history_without_current)
+
+    else:
+        history, _ = get_messages_for_prompt(conv_id)
+        history_without_current = [m for m in history if m["content"] != user_message]
+        chain = build_simple_conversation_chain(system_prompt)
+        stream_input = {
+            "user_message": user_message,
+            "history": format_messages_for_langchain(history_without_current),
+        }
+
+    def event_stream():
+        chunks = []
+
+        try:
+            yield _sse_event("thinking", {"status": "AI is thinking"})
+
+            for piece in chain.stream(stream_input):
+                text_piece = piece if isinstance(piece, str) else str(piece)
+                if not text_piece:
+                    continue
+                chunks.append(text_piece)
+                yield _sse_event("token", {"chunk": text_piece})
+
+            ai_response = "".join(chunks).strip()
+            if not ai_response:
+                yield _sse_event("error", {"error": "Empty response from model"})
+                return
+
+            assistant_msg = save_message(conv_id, "assistant", ai_response)
+
+            if memory_type == "entity":
+                extract_entities_from_message(conv_id, ai_response, assistant_msg.id)
+            elif memory_type == "kg":
+                extract_triples_from_message(conv_id, ai_response, assistant_msg.id)
+            elif memory_type == "sequential":
+                extract_entities_from_message(conv_id, ai_response, assistant_msg.id)
+                extract_triples_from_message(conv_id, ai_response, assistant_msg.id)
+
+            try:
+                if memory_type in ["summary", "sequential"]:
+                    updated_summary = update_summary_from_ai_response(conv_id, assistant_msg.id)
+                    if updated_summary:
+                        extra_info["summary"] = updated_summary.summary_text
+            except Exception:
+                logger.exception("Failed to update summary for conversation %s", conv_id)
+
+            if conv.title == "New Chat":
+                conv.title = user_message[:50] + ("..." if len(user_message) > 50 else "")
+                db.session.commit()
+
+            yield _sse_event("done", {
+                "response": ai_response,
+                "token_info": token_info,
+                "memory_type": memory_type,
+                **extra_info,
+            })
+        except GeneratorExit:
+            logger.info("Client disconnected during stream for conversation %s", conv_id)
+        except Exception as e:
+            logger.exception("Streaming failed for conversation %s", conv_id)
+            yield _sse_event("error", {"error": str(e)})
+
+    headers = {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    }
+    return Response(stream_with_context(event_stream()), mimetype="text/event-stream", headers=headers)
 
 
 @conversations_bp.route("/api/conversations/<int:conv_id>/tokens", methods=["GET"])

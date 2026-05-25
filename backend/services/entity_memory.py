@@ -11,23 +11,25 @@ logger = logging.getLogger(__name__)
 
 
 ENTITY_EXTRACTION_PROMPT = """You are a precise knowledge extraction system.
-Your job is to extract named entities from the user's message.
+Your job is to extract named entities from the AI's final response text.
 
 STRICT RULES:
-1. Extract ONLY entities explicitly stated in the message
+1. Extract ONLY entities explicitly stated in the AI response
 2. NEVER invent, assume, or hallucinate entity names
 3. NEVER use example names from your training data
-4. If no real entities exist in the message, return empty list
+4. Ignore greetings, filler words, and generic conversational text
+5. If no real entities exist in the response, return empty list
 
 Entity types to extract:
 - person: real people mentioned by name
 - organization: companies, teams, institutions
 - project: specific project or product names
+- technology: programming languages, frameworks, libraries, tools, platforms
 - date: specific dates, deadlines, timeframes
-- technology: programming languages, frameworks, tools
+- concept: useful abstract ideas or domain concepts that are not concrete products
 - location: cities, countries, places
 
-Message: {message}
+AI response: {message}
 
 Already known entities: {existing_entities}
 
@@ -45,6 +47,37 @@ Return ONLY valid JSON, no explanation:
 If nothing to extract: {{"entities": []}}"""
 
 
+_GENERIC_ENTITY_NAMES = {
+    "user",
+    "assistant",
+    "hello",
+    "hi",
+    "hey",
+    "thanks",
+    "thank you",
+    "good morning",
+    "good afternoon",
+    "good evening",
+    "question",
+    "answer",
+    "message",
+    "response",
+    "conversation",
+}
+
+_ENTITY_TYPE_PRIORITY = {
+    "general": 0,
+    "concept": 1,
+    "date": 2,
+    "location": 2,
+    "project": 3,
+    "organization": 4,
+    "org": 4,
+    "person": 5,
+    "technology": 6,
+}
+
+
 ENTITY_CONTEXT_PROMPT = """You are an entity selector. Given a user message and known entities, return only the relevant entities.
 
 User message: {message}
@@ -58,7 +91,7 @@ If none relevant, return: []"""
 
 def extract_entities_from_message(conversation_id: int, message_content: str, message_id: int = None) -> list:
     """
-    Extract entities from the message using the LLM.
+    Extract entities from the AI response using the LLM.
     """
     
     existing = get_all_entities(conversation_id)
@@ -76,7 +109,7 @@ def extract_entities_from_message(conversation_id: int, message_content: str, me
 
          # DEBUG — this will appear in the terminal
         logger.info("=== ENTITY EXTRACTION ===")
-        logger.info("Message: %s", message_content)
+        logger.info("AI Response: %s", message_content)
         logger.info("LLM Raw Response: %s", raw)
 
         
@@ -90,10 +123,18 @@ def extract_entities_from_message(conversation_id: int, message_content: str, me
 
        
         saved = []
+        seen_names = set()
         for entity_data in extracted:
+            name = (entity_data.get("name", "") or "").strip()
+            normalized_name = _normalize_entity_name(name)
+            if not name or normalized_name in seen_names:
+                continue
+            if _should_skip_entity(name):
+                continue
+            seen_names.add(normalized_name)
             entity = save_or_update_entity(
                 conversation_id=conversation_id,
-                name=entity_data.get("name", ""),
+                name=name,
                 entity_type=entity_data.get("type", "general"),
                 description=entity_data.get("description", ""),
                 source_message_id=message_id
@@ -112,33 +153,67 @@ def save_or_update_entity(conversation_id: int, name: str, entity_type: str, des
     """
     Save the entity and update it if it already exists.
     """
-    if not name or not name.strip():
+    name = name.strip()
+    if not name or _should_skip_entity(name):
         return None
 
    
-    existing = Entity.query.filter_by(
-        conversation_id=conversation_id,
-        name=name
+    existing = Entity.query.filter(
+        Entity.conversation_id == conversation_id,
+        db.func.lower(Entity.name) == name.lower()
     ).first()
 
     if existing:
-       
-        if description and description not in existing.description:
-            existing.description = existing.description + ". " + description if existing.description else description
+        new_type = _choose_better_entity_type(existing.entity_type, entity_type)
+        if new_type != existing.entity_type:
+            existing.entity_type = new_type
+
+        if description:
+            cleaned_description = description.strip()
+            if cleaned_description and cleaned_description.lower() not in existing.description.lower():
+                existing.description = (
+                    existing.description + ". " + cleaned_description
+                    if existing.description
+                    else cleaned_description
+                )
         db.session.commit()
         return existing.to_dict()
     else:
-       
         entity = Entity(
             conversation_id=conversation_id,
             name=name,
-            entity_type=entity_type,
-            description=description,
+            entity_type=entity_type.strip() if entity_type else "general",
+            description=description.strip() if description else "",
             source_message_id=source_message_id
         )
         db.session.add(entity)
         db.session.commit()
         return entity.to_dict()
+
+
+def _normalize_entity_name(name: str) -> str:
+    return " ".join(name.lower().split())
+
+
+def _should_skip_entity(name: str) -> bool:
+    normalized = _normalize_entity_name(name)
+    if not normalized or len(normalized) < 2:
+        return True
+    if normalized in _GENERIC_ENTITY_NAMES:
+        return True
+    if normalized.isdigit():
+        return True
+    if normalized in {"ai", "llm"}:
+        return False
+    return False
+
+
+def _choose_better_entity_type(existing_type: str, new_type: str) -> str:
+    existing_key = (existing_type or "general").lower()
+    new_key = (new_type or "general").lower()
+    if _ENTITY_TYPE_PRIORITY.get(new_key, 0) >= _ENTITY_TYPE_PRIORITY.get(existing_key, 0):
+        return new_key
+    return existing_key
 
 
 def get_all_entities(conversation_id: int) -> list:
@@ -167,9 +242,6 @@ def get_relevant_entities_for_message(conversation_id: int, message: str) -> str
             relevant.append(entity)
 
    
-    if not relevant and len(all_entities) > 0:
-        relevant = all_entities[:5]  # Inject the top 5 entities
-
     if not relevant:
         return ""
 

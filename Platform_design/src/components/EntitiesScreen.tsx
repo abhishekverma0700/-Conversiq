@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Database, Loader2, Search } from "lucide-react";
 import { motion } from "motion/react";
 import type { AuthRequestContext, Entity } from "../types";
@@ -16,6 +16,20 @@ export default function EntitiesScreen({
   const [entities, setEntities] = useState<Entity[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
+  const [activeCategory, setActiveCategory] = useState<string>("all");
+
+  const normalizeType = (t?: string) => {
+    if (!t) return "general";
+    const s = t.toLowerCase();
+    if (s === "organization" || s === "company" || s === "orgs") return "org";
+    if (s === "people" || s === "individual" || s === "person") return "person";
+    if (s === "project" || s === "projects") return "project";
+    if (s === "date" || s === "dates") return "date";
+    if (s === "concept" || s === "concepts") return "concept";
+    if (s === "org") return "org";
+    if (s === "general") return "general";
+    return s;
+  };
 
   const loadEntities = useCallback(async () => {
     if (!conversationId) return;
@@ -56,12 +70,28 @@ export default function EntitiesScreen({
     );
   }
 
-  const filtered = entities.filter(
-    (e) =>
-      !searchQuery ||
-      e.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      e.description?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const counts = useMemo(() => {
+    return entities.reduce((acc: Record<string, number>, e) => {
+      const t = normalizeType(e.entity_type);
+      acc[t] = (acc[t] || 0) + 1;
+      acc.total = (acc.total || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+  }, [entities]);
+
+  const filtered = entities
+    .filter((e) => {
+      const t = normalizeType(e.entity_type);
+      if (activeCategory && activeCategory !== "all") {
+        if (t !== activeCategory) return false;
+      }
+      return (
+        !searchQuery ||
+        e.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        e.description?.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   return (
     <div className="h-full overflow-y-auto p-6">
@@ -96,20 +126,46 @@ export default function EntitiesScreen({
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          {Object.entries(entityConfig).map(([type, cfg]) => {
-            const Icon = cfg.icon;
-            return (
-              <button
-                key={type}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#E5E7EB] bg-white text-[12px] font-medium hover:border-[#D0CFFE] transition-colors"
-                style={{ color: cfg.color }}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                {cfg.label}
-              </button>
-            );
-          })}
+        <div className="sticky top-6 z-20 bg-white py-2">
+          <div className="flex flex-wrap gap-2">
+            <button
+              key="all"
+              onClick={() => setActiveCategory("all")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12px] font-medium transition-colors ${
+                activeCategory === "all"
+                  ? "bg-[#7A1F2B] text-white border-[#7A1F2B]"
+                  : "bg-white border border-[#E5E7EB] hover:border-[#D0CFFE]"
+              }`}
+            >
+              <Database className="w-3.5 h-3.5" />
+              All ({counts.total || 0})
+            </button>
+
+            {Object.entries(entityConfig)
+              .filter(([type]) => type !== "general")
+              .map(([type, cfg]) => {
+              const Icon = cfg.icon;
+              return (
+                <button
+                  key={type}
+                  onClick={() => setActiveCategory(type)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-[12px] font-medium transition-colors ${
+                    activeCategory === type
+                      ? "bg-[#7A1F2B] text-white border-[#7A1F2B]"
+                      : "bg-white border border-[#E5E7EB] hover:border-[#D0CFFE]"
+                  }`}
+                  style={
+                    activeCategory === type
+                      ? { backgroundColor: "#7A1F2B", color: "white" }
+                      : { color: cfg.color }
+                  }
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {cfg.label} ({counts[type] || 0})
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {loading ? (
@@ -121,11 +177,11 @@ export default function EntitiesScreen({
             <Database className="w-10 h-10 mx-auto opacity-30 mb-3" />
             <div className="text-[14px]">No entities found</div>
             <div className="text-[12px]">
-              Use Entity or KG memory mode and chat to extract entities
+              No {activeCategory === "all" ? "entities" : `${activeCategory} entities`} found. Try another filter or search.
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <motion.div key={activeCategory} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filtered.map((entity, i) => (
               <motion.div
                 key={entity.id}
@@ -136,7 +192,7 @@ export default function EntitiesScreen({
                 <EntityCard entity={entity} />
               </motion.div>
             ))}
-          </div>
+          </motion.div>
         )}
       </div>
     </div>

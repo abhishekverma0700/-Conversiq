@@ -14,7 +14,7 @@ import type {
 } from "../types";
 import { memoryConfig } from "../types";
 import { api } from "./api";
-import MessageBubble, { TypingIndicator } from "../components/MessageBubble";
+import MessageBubble from "../components/MessageBubble";
 import ConversationItem from "../components/ConversationList";
 import WelcomeScreen from "../components/WelcomeScreen";
 import MemoryPanel from "../components/MemoryPanel";
@@ -40,6 +40,8 @@ const DEFAULT_GENERAL_ASSISTANT_PERSONA: Persona = {
   system_prompt: "You are a helpful, friendly AI assistant. Remember everything the user tells you and use it to provide personalized, contextual responses.",
   temperature: 0.7,
 };
+
+const THINKING_PLACEHOLDER = "AI is thinking...";
 
 const sidebarSectionClass = "px-3 py-3";
 
@@ -68,6 +70,7 @@ export default function App() {
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
   const [memoryTypeOverride, setMemoryTypeOverride] = useState<MemoryMode | "">("");
   const [authMessage, setAuthMessage] = useState<{ text: string; type: "error" | "success" | "info" } | null>(null);
+  const [memoryRefreshKey, setMemoryRefreshKey] = useState(0);
 
   // Toast
   const [toast, setToast] = useState<{
@@ -77,6 +80,7 @@ export default function App() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const streamAbortRef = useRef<AbortController | null>(null);
 
   const showToast = (
     message: string,
@@ -187,6 +191,15 @@ export default function App() {
   }, [messages, isTyping]);
 
   useEffect(() => {
+    return () => {
+      if (streamAbortRef.current) {
+        streamAbortRef.current.abort();
+        streamAbortRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     setIsAuthMenuOpen(false);
     setAuthMessage(null);
   }, [currentScreen]);
@@ -271,44 +284,149 @@ export default function App() {
     }
   }, [selectedPersona, memoryTypeOverride, user?.id, authContext]);
 
+  const updateConversationInSidebar = useCallback(
+    (convId: number, userMessage: string) => {
+      const title =
+        userMessage.slice(0, 50) + (userMessage.length > 50 ? "..." : "");
+      const now = new Date().toISOString();
+
+      setConversations((prev) =>
+        [...prev]
+          .map((conv) =>
+            conv.id === convId
+              ? {
+                  ...conv,
+                  title: conv.title === "New Chat" ? title : conv.title,
+                  message_count: conv.message_count + 2,
+                  updated_at: now,
+                }
+              : conv
+          )
+          .sort((a, b) => {
+            if (a.is_pinned !== b.is_pinned) {
+              return a.is_pinned ? -1 : 1;
+            }
+            return (
+              new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+            );
+          })
+      );
+    },
+    []
+  );
+
   // ── Send message ──────────────────────────────────────────────────────
   const handleSendMessage = useCallback(async () => {
     const text = inputValue.trim();
-    if (!text || !selectedConvId) return;
+    if (!text || !selectedConvId || isTyping) return;
 
+    const assistantMsgId = `assistant-${Date.now() + 1}`;
     const userMsg: Message = {
       id: `user-${Date.now()}`,
       role: "user",
       content: text,
       timestamp: new Date(),
     };
-    setMessages((prev) => [...prev, userMsg]);
+    const assistantPlaceholder: Message = {
+      id: assistantMsgId,
+      role: "assistant",
+      content: THINKING_PLACEHOLDER,
+      timestamp: new Date(),
+    };
+
+    setMessages((prev) => [...prev, userMsg, assistantPlaceholder]);
     setInputValue("");
+    setIsTyping(true);
+
+    if (streamAbortRef.current) {
+      streamAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    streamAbortRef.current = controller;
+
+    let streamErrored = false;
+    let firstChunkArrived = false;
 
     try {
-      const data = await api.sendMessage(selectedConvId, text, {
-        accessToken: session?.access_token,
-        userId: session?.user?.id,
-      });
-
-      if (data.response) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `assistant-${Date.now() + 1}`,
-            role: "assistant" as const,
-            content: data.response,
-            timestamp: new Date(),
+      await api.sendMessageStream(
+        selectedConvId,
+        text,
+        {
+          accessToken: session?.access_token,
+          userId: session?.user?.id,
+        },
+        {
+          onThinking: () => {
+            setIsTyping(true);
           },
-        ]);
-        void loadConversations();
-      }
+          onChunk: (chunk) => {
+            if (!chunk) return;
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === assistantMsgId
+                  ? {
+                      ...msg,
+                      content: firstChunkArrived || msg.content !== THINKING_PLACEHOLDER
+                        ? `${msg.content}${chunk}`
+                        : chunk,
+                    }
+                  : msg
+              )
+            );
+            firstChunkArrived = true;
+          },
+          onDone: (payload) => {
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === assistantMsgId
+                  ? {
+                      ...msg,
+                      // Keep progressively streamed content. Only fallback to payload response if needed.
+                      content:
+                        !msg.content || msg.content === THINKING_PLACEHOLDER
+                          ? (payload?.response || "")
+                          : msg.content,
+                      timestamp: new Date(),
+                    }
+                  : msg
+              )
+            );
+            setMemoryRefreshKey((v) => v + 1);
+              updateConversationInSidebar(selectedConvId, text);
+          },
+          onError: (message) => {
+            streamErrored = true;
+            showToast(message || "Streaming failed", "error");
+          },
+        },
+        controller.signal
+      );
     } catch (err) {
-      console.error("Failed:", err);
+      if ((err as any)?.name !== "AbortError") {
+        streamErrored = true;
+        console.error("Failed:", err);
+        showToast("Network error while streaming response", "error");
+      }
     } finally {
+      if (streamAbortRef.current === controller) {
+        streamAbortRef.current = null;
+      }
+
+      if (streamErrored) {
+        setMessages((prev) =>
+          prev.map((msg) => {
+            if (msg.id !== assistantMsgId) return msg;
+            if (msg.content.trim() && msg.content !== THINKING_PLACEHOLDER) return msg;
+            return {
+              ...msg,
+              content: "Response interrupted. Please retry.",
+            };
+          })
+        );
+      }
       setIsTyping(false);
     }
-  }, [inputValue, selectedConvId, session]);
+  }, [inputValue, selectedConvId, isTyping, session, updateConversationInSidebar]);
 
   // ── Pin conversation ──────────────────────────────────────────────────
   const handlePinConversation = useCallback(
@@ -930,9 +1048,6 @@ export default function App() {
                             <MessageBubble key={msg.id} message={msg} index={i} />
                           ))}
                         </AnimatePresence>
-                        <AnimatePresence>
-                          {isTyping && <TypingIndicator />}
-                        </AnimatePresence>
                         <div ref={messagesEndRef} />
                       </div>
                     </div>
@@ -1009,6 +1124,7 @@ export default function App() {
                   activeTab={activeTab}
                   setActiveTab={setActiveTab}
                   conversationId={selectedConvId}
+                  refreshKey={memoryRefreshKey}
                   authContext={authContext}
                 />
               </div>
@@ -1098,6 +1214,7 @@ export default function App() {
                 activeTab={activeTab}
                 setActiveTab={setActiveTab}
                 conversationId={selectedConvId}
+                refreshKey={memoryRefreshKey}
                 authContext={authContext}
               />
             </motion.div>

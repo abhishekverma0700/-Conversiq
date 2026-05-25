@@ -10,14 +10,28 @@ export default function EntityCard({
   entity: Entity;
   compact?: boolean;
 }) {
-  const cfg = entityConfig[entity.entity_type] || entityConfig.general;
+  const normalizeTypeLocal = (t?: string) => {
+    if (!t) return "general";
+    const s = t.toLowerCase();
+    if (s === "organization" || s === "company" || s === "orgs") return "org";
+    if (s === "people" || s === "individual" || s === "person") return "person";
+    if (s === "project" || s === "projects") return "project";
+    if (s === "date" || s === "dates") return "date";
+    if (s === "concept" || s === "concepts") return "concept";
+    if (s === "org") return "org";
+    if (s === "general") return "general";
+    return s;
+  };
+
+  const normalizedType = normalizeTypeLocal(entity.entity_type);
+  const cfg = entityConfig[normalizedType] || entityConfig.general;
   const Icon = cfg.icon;
   return (
     <div
-      className={`bg-white border border-[#E5E7EB] rounded-xl p-3 hover:border-[#D0CFFE] transition-all duration-200 hover:-translate-y-0.5 ${
+      className={`bg-white border border-[#E5E7EB] rounded-xl p-3 transition-all duration-200 transform hover:-translate-y-0.5 ${
         compact ? "" : "mb-2"
       }`}
-      style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}
+      style={{ boxShadow: "0 6px 18px rgba(0,0,0,0.04)" }}
     >
       <div className="flex items-start gap-3">
         <div
@@ -32,7 +46,7 @@ export default function EntityCard({
               {entity.name}
             </span>
             <span
-              className="text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0"
+              className="text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 flex items-center gap-1"
               style={{ color: cfg.color, backgroundColor: `${cfg.color}15` }}
             >
               {cfg.label}
@@ -41,11 +55,16 @@ export default function EntityCard({
           <p className="text-[12px] text-[#6B7280] leading-relaxed line-clamp-2">
             {entity.description || "No description yet"}
           </p>
+
           {!compact && (
-            <div className="flex items-center gap-3 mt-2">
-              <span className="text-[11px] text-[#9CA3AF]">
-                {formatTime(entity.updated_at)}
-              </span>
+            <div className="flex items-center justify-between gap-3 mt-2">
+              <div className="flex items-center gap-3">
+                <span className="text-[11px] text-[#9CA3AF]">
+                  Updated {formatTime(entity.updated_at)}
+                </span>
+                <span className="text-[11px] text-[#9CA3AF]">•</span>
+                <span className="text-[11px] text-[#9CA3AF]">Type: {cfg.label}</span>
+              </div>
             </div>
           )}
         </div>

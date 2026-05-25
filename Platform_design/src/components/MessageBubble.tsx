@@ -12,6 +12,7 @@ export default function MessageBubble({
   index: number;
 }) {
   const isUser = message.role === "user";
+  const isThinkingBubble = !isUser && message.content === "AI is thinking...";
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -47,7 +48,16 @@ export default function MessageBubble({
               : { boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }
           }
         >
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+          {isThinkingBubble ? (
+            <span className="inline-flex items-center gap-1 text-[#6B7280]">
+              <span>AI is thinking</span>
+              <span className="typing-dot w-1.5 h-1.5 rounded-full bg-[#9CA3AF]" />
+              <span className="typing-dot w-1.5 h-1.5 rounded-full bg-[#9CA3AF]" />
+              <span className="typing-dot w-1.5 h-1.5 rounded-full bg-[#9CA3AF]" />
+            </span>
+          ) : (
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+          )}
         </div>
         <span className="text-[11px] text-[#9CA3AF] px-1">
           {(message.timestamp instanceof Date && !isNaN(message.timestamp.getTime())

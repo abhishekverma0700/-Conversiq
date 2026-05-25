@@ -1,5 +1,6 @@
-import React, { useRef, useCallback } from "react";
+import React, { useEffect, useMemo, useRef, useCallback } from "react";
 import ForceGraph2D from "react-force-graph-2d";
+import { forceCollide, forceManyBody } from "d3-force";
 import type { GraphEdge, GraphNode } from "../types";
 
 const ENTITY_COLORS: Record<string, string> = {
@@ -27,10 +28,62 @@ export default function KnowledgeGraph({
   height?: number;
   fullscreen?: boolean;
 }) {
-  const fgRef = useRef<any>();
+  const fgRef = useRef<any>(null);
+
+  const graphData = useMemo(() => ({
+    nodes: nodes.map((n) => ({
+      id: n.id,
+      label: n.label,
+      type: n.type,
+    })),
+    links: edges.map((e) => ({ source: e.source, target: e.target, label: e.label })),
+  }), [nodes, edges]);
+
+  useEffect(() => {
+    if (!fgRef.current || nodes.length === 0) return;
+    const timer = window.setTimeout(() => {
+      fgRef.current?.zoomToFit?.(450, 48);
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [nodes, edges]);
+
+  useEffect(() => {
+    if (!fgRef.current || nodes.length === 0) return;
+
+    fgRef.current.d3Force?.("charge", forceManyBody().strength(-220));
+    fgRef.current.d3Force?.("collide", forceCollide().radius((node: any) => getNodeSize(node) + 8).iterations(2));
+    fgRef.current.d3ReheatSimulation?.();
+  }, [nodes, edges, fullscreen]);
+
+  const wrapLabel = (label: string, maxChars: number) => {
+    if (!label) return [] as string[];
+    const words = label.split(/\s+/);
+    const lines: string[] = [];
+    let current = "";
+    words.forEach((word) => {
+      const next = current ? `${current} ${word}` : word;
+      if (next.length > maxChars && current) {
+        lines.push(current);
+        current = word;
+      } else {
+        current = next;
+      }
+    });
+    if (current) lines.push(current);
+    return lines.slice(0, 3);
+  };
+
+  const getNodeSize = (node: any) => {
+    const labelLength = String(node?.label || "").length;
+    const base = fullscreen ? 12 : 9;
+    const extra = Math.min(10, Math.max(0, Math.ceil(labelLength / 8)));
+    return base + extra;
+  };
+
+  const isFiniteCoord = (value: any) => Number.isFinite(value);
 
   const handleNodeClick = useCallback((node: any) => {
-    if (fgRef.current) {
+    if (fgRef.current && isFiniteCoord(node?.x) && isFiniteCoord(node?.y)) {
       fgRef.current.centerAt(node.x, node.y, 600);
       fgRef.current.zoom(3, 600);
     }
@@ -54,11 +107,6 @@ export default function KnowledgeGraph({
     );
   }
 
-  const graphData = {
-    nodes: nodes.map((n) => ({ id: n.id, label: n.label, type: n.type })),
-    links: edges.map((e) => ({ source: e.source, target: e.target, label: e.label })),
-  };
-
   return (
     <div style={{ position: "relative", width, height, borderRadius: 12, overflow: "hidden" }}>
       <ForceGraph2D
@@ -67,17 +115,28 @@ export default function KnowledgeGraph({
         width={width}
         height={height}
         backgroundColor="#0F0F1A"
+        d3AlphaMin={0.001}
+        d3AlphaDecay={0.03}
+        d3VelocityDecay={0.45}
+        cooldownTicks={140}
+        warmupTicks={0}
+        nodeRelSize={4}
+        nodeVal={(node: any) => getNodeSize(node)}
+        minZoom={0.35}
         nodeCanvasObject={(node: any, ctx, globalScale) => {
-          const r = fullscreen ? 10 : 7;
+          const radius = getNodeSize(node);
           const color = ENTITY_COLORS[node.type] || "#6C63FF";
+          const safeX = isFiniteCoord(node?.x) ? node.x : 0;
+          const safeY = isFiniteCoord(node?.y) ? node.y : 0;
+          const maxLineChars = fullscreen ? 14 : 10;
+          const labelLines = wrapLabel(String(node?.label || ""), maxLineChars);
+          const lineHeight = Math.max(10 / globalScale, fullscreen ? 12 : 10);
           
-          // Glow effect
           ctx.shadowColor = color;
-          ctx.shadowBlur = 8;
+          ctx.shadowBlur = 6;
           
-          // Circle
           ctx.beginPath();
-          ctx.arc(node.x, node.y, r, 0, 2 * Math.PI);
+          ctx.arc(safeX, safeY, radius, 0, 2 * Math.PI);
           ctx.fillStyle = color;
           ctx.fill();
           ctx.strokeStyle = "rgba(255,255,255,0.4)";
@@ -85,21 +144,27 @@ export default function KnowledgeGraph({
           ctx.stroke();
           ctx.shadowBlur = 0;
 
-          // Label
-          const fontSize = fullscreen ? 11 : 9;
+          const fontSize = Math.max(9 / globalScale, fullscreen ? 9 : 8);
           ctx.font = `600 ${fontSize}px Inter, sans-serif`;
           ctx.textAlign = "center";
           ctx.textBaseline = "top";
           ctx.fillStyle = "#E5E7EB";
-          const maxLen = fullscreen ? 16 : 10;
-          const label = node.label?.length > maxLen 
-            ? node.label.slice(0, maxLen) + "…" 
-            : node.label || "";
-          ctx.fillText(label, node.x, node.y + r + 3);
+
+          const totalHeight = labelLines.length * lineHeight;
+          labelLines.forEach((line, index) => {
+            ctx.fillText(line, safeX, safeY + radius + 4 + index * lineHeight);
+          });
+
+          // soft hit area for the label
+          ctx.beginPath();
+          ctx.rect(safeX - radius - 8, safeY - radius - 8, (radius + 8) * 2, (radius + 8) * 2 + totalHeight);
         }}
         nodePointerAreaPaint={(node: any, color, ctx) => {
+          const safeX = isFiniteCoord(node?.x) ? node.x : 0;
+          const safeY = isFiniteCoord(node?.y) ? node.y : 0;
+          const radius = getNodeSize(node) + 5;
           ctx.beginPath();
-          ctx.arc(node.x, node.y, 12, 0, 2 * Math.PI);
+          ctx.arc(safeX, safeY, radius, 0, 2 * Math.PI);
           ctx.fillStyle = color;
           ctx.fill();
         }}
@@ -107,26 +172,34 @@ export default function KnowledgeGraph({
         linkWidth={1.5}
         linkDirectionalArrowLength={5}
         linkDirectionalArrowRelPos={1}
-        linkDirectionalParticles={1}
-        linkDirectionalParticleSpeed={0.004}
+        linkDirectionalParticles={0}
         linkCanvasObjectMode={() => "after"}
         linkCanvasObject={(link: any, ctx) => {
           const start = link.source;
           const end = link.target;
-          if (!start?.x || !end?.x) return;
+          if (!isFiniteCoord(start?.x) || !isFiniteCoord(start?.y) || !isFiniteCoord(end?.x) || !isFiniteCoord(end?.y)) return;
           const mx = (start.x + end.x) / 2;
           const my = (start.y + end.y) / 2;
-          ctx.font = `${fullscreen ? 9 : 7}px Inter, sans-serif`;
+          ctx.font = `600 ${Math.max(7, fullscreen ? 9 : 7)}px Inter, sans-serif`;
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
-          ctx.fillStyle = "#9CA3AF";
-          ctx.fillText(link.label || "", mx, my - 4);
+          ctx.fillStyle = "#94A3B8";
+          const text = String(link.label || "");
+          if (!text) return;
+          const safeLabel = text.length > (fullscreen ? 18 : 12) ? `${text.slice(0, fullscreen ? 18 : 12)}…` : text;
+          ctx.fillText(safeLabel, mx, my - 4);
         }}
         onNodeClick={handleNodeClick}
         enableNodeDrag={true}
         enableZoomInteraction={true}
-        cooldownTicks={80}
         nodeLabel={(node: any) => `${node.label} (${node.type})`}
+        onEngineStop={() => fgRef.current?.zoomToFit?.(450, 48)}
+        onNodeDragEnd={(node: any) => {
+          if (isFiniteCoord(node?.x) && isFiniteCoord(node?.y)) {
+            node.fx = node.x;
+            node.fy = node.y;
+          }
+        }}
       />
 
       {/* Legend - only in fullscreen */}
