@@ -10,31 +10,39 @@ import json
 logger = logging.getLogger(__name__)
 
 
-ENTITY_EXTRACTION_PROMPT = """You are an entity extractor. Extract named entities and their key facts from this conversation message.
+ENTITY_EXTRACTION_PROMPT = """You are a precise knowledge extraction system.
+Your job is to extract named entities from the user's message.
 
-Extract: people, organizations, projects, dates, technologies, locations.
+STRICT RULES:
+1. Extract ONLY entities explicitly stated in the message
+2. NEVER invent, assume, or hallucinate entity names
+3. NEVER use example names from your training data
+4. If no real entities exist in the message, return empty list
+
+Entity types to extract:
+- person: real people mentioned by name
+- organization: companies, teams, institutions
+- project: specific project or product names
+- date: specific dates, deadlines, timeframes
+- technology: programming languages, frameworks, tools
+- location: cities, countries, places
 
 Message: {message}
 
-Previous entities known: {existing_entities}
+Already known entities: {existing_entities}
 
-Return ONLY a JSON object like this (no other text):
+Return ONLY valid JSON, no explanation:
 {{
-  "entities": [
-    {{
-      "name": "Rahul",
-      "type": "person",
-      "description": "Python developer at Acme Corp"
-    }},
-    {{
-      "name": "Acme Corp", 
-      "type": "organization",
-      "description": "Tech company where Rahul works"
-    }}
-  ]
+    "entities": [
+        {{
+            "name": "exact name from message",
+            "type": "one of the types above",
+            "description": "what was said about this entity in the message"
+        }}
+    ]
 }}
 
-If no entities found, return: {{"entities": []}}"""
+If nothing to extract: {{"entities": []}}"""
 
 
 ENTITY_CONTEXT_PROMPT = """You are an entity selector. Given a user message and known entities, return only the relevant entities.

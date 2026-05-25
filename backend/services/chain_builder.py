@@ -148,7 +148,7 @@ def run_conversation_chain(
 
 
 def run_entity_chain_safe(chain, user_message: str, history_messages: list, entity_context: str) -> str:
-    """Entity chain — empty context pe bhi safe"""
+    """Entity chain — safe when the context is empty"""
     lc_history = format_messages_for_langchain(history_messages)
     return chain.invoke({
         "user_message": user_message,
@@ -158,7 +158,7 @@ def run_entity_chain_safe(chain, user_message: str, history_messages: list, enti
 
 
 def run_kg_chain_safe(chain, user_message: str, history_messages: list, kg_context: str) -> str:
-    """KG chain — empty context pe bhi safe"""
+    """KG chain — safe when the context is empty"""
     lc_history = format_messages_for_langchain(history_messages)
     return chain.invoke({
         "user_message": user_message,

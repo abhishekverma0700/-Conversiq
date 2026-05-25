@@ -188,6 +188,7 @@ export default function App() {
 
   useEffect(() => {
     setIsAuthMenuOpen(false);
+    setAuthMessage(null);
   }, [currentScreen]);
 
   useEffect(() => {
@@ -300,6 +301,7 @@ export default function App() {
             timestamp: new Date(),
           },
         ]);
+        void loadConversations();
       }
     } catch (err) {
       console.error("Failed:", err);
@@ -879,10 +881,12 @@ export default function App() {
               isOpen={isAuthMenuOpen}
               onToggle={() => setIsAuthMenuOpen((v) => !v)}
               onLogin={() => {
+                setAuthMessage(null);
                 setCurrentScreen("login");
                 setIsAuthMenuOpen(false);
               }}
               onRegister={() => {
+                setAuthMessage(null);
                 setCurrentScreen("register");
                 setIsAuthMenuOpen(false);
               }}

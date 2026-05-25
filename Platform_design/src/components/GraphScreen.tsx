@@ -1,8 +1,19 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import ForceGraph2D from "react-force-graph-2d";
 import { Loader2, Workflow } from "lucide-react";
 import type { AuthRequestContext, GraphEdge, GraphNode, KGTriple } from "../types";
 import { api } from "../app/api";
+
+const NODE_COLORS: Record<string, string> = {
+  person: "#6C63FF",
+  org: "#00D4AA",
+  organization: "#00D4AA",
+  project: "#FF8A65",
+  date: "#EC4899",
+  concept: "#A78BFA",
+  technology: "#F59E0B",
+  location: "#10B981",
+};
 
 export default function GraphScreen({
   conversationId,
@@ -11,6 +22,7 @@ export default function GraphScreen({
   conversationId: number | null;
   authContext?: AuthRequestContext;
 }) {
+  const fgRef = useRef<any>(null);
   const [triples, setTriples] = useState<KGTriple[]>([]);
   const [nodes, setNodes] = useState<GraphNode[]>([]);
   const [edges, setEdges] = useState<GraphEdge[]>([]);
@@ -32,8 +44,8 @@ export default function GraphScreen({
               id: t.subject,
               label: t.subject,
               type: "concept",
-              x: 80 + (idx % 6) * 90,
-              y: 80 + Math.floor(idx / 6) * 90,
+              x: 120 + (idx % 4) * 150,
+              y: 120 + Math.floor(idx / 4) * 130,
             };
             idx++;
           }
@@ -42,8 +54,8 @@ export default function GraphScreen({
               id: t.object,
               label: t.object,
               type: "concept",
-              x: 80 + (idx % 6) * 90,
-              y: 80 + Math.floor(idx / 6) * 90,
+              x: 120 + (idx % 4) * 150,
+              y: 120 + Math.floor(idx / 4) * 130,
             };
             idx++;
           }
@@ -67,12 +79,7 @@ export default function GraphScreen({
   return (
     <div className="h-full flex">
       <div
-        className="flex-1 relative overflow-hidden bg-[#FBF7F6]"
-        style={{
-          backgroundImage:
-            "radial-gradient(circle, rgba(122,31,43,0.08) 1px, transparent 1px)",
-          backgroundSize: "24px 24px",
-        }}
+        className="flex-1 relative overflow-hidden bg-white"
       >
         {loading ? (
           <div className="h-full flex items-center justify-center">
@@ -87,7 +94,9 @@ export default function GraphScreen({
             </div>
           </div>
         ) : (
+          <>
           <ForceGraph2D
+            ref={fgRef}
             graphData={{
               nodes: nodes.map((n) => ({
                 id: n.id,
@@ -100,35 +109,115 @@ export default function GraphScreen({
                 label: e.label,
               })),
             }}
-            nodeLabel="label"
-            nodeColor={(node: any) => {
-              const colors: Record<string, string> = {
-                person: "#7A1F2B",
-                org: "#C8A96A",
-                project: "#B76E4E",
-                date: "#A15B68",
-                concept: "#9B4B5A",
-              };
-              return colors[node.type] || "#7A1F2B";
+            width={window.innerWidth - 560}
+            height={window.innerHeight - 64}
+            backgroundColor="#FFFFFF"
+            nodeLabel={(node: any) => `${node.label} (${node.type})`}
+            nodeCanvasObject={(node: any, ctx, globalScale) => {
+              const r = 12;
+              const color = NODE_COLORS[node.type] || "#6C63FF";
+
+              // Outer glow ring
+              ctx.beginPath();
+              ctx.arc(node.x, node.y, r + 3, 0, 2 * Math.PI);
+              ctx.fillStyle = color + "30";
+              ctx.fill();
+
+              // Main circle
+              ctx.beginPath();
+              ctx.arc(node.x, node.y, r, 0, 2 * Math.PI);
+              ctx.fillStyle = color;
+              ctx.fill();
+              ctx.strokeStyle = "#FFFFFF";
+              ctx.lineWidth = 2;
+              ctx.stroke();
+
+              // Label below node
+              const fontSize = Math.max(9 / globalScale, 4);
+              ctx.font = `600 ${fontSize}px Inter, sans-serif`;
+              ctx.textAlign = "center";
+              ctx.textBaseline = "top";
+              ctx.fillStyle = "#1F2937";
+              const maxLen = 12;
+              const label = node.label?.length > maxLen
+                ? node.label.slice(0, maxLen) + "…"
+                : node.label || "";
+              ctx.fillText(label, node.x, node.y + r + 4);
             }}
-            linkLabel="label"
-            linkColor={() => "#374151"}
-            backgroundColor="#0F0F1A"
-            width={640}
-            height={480}
+            nodePointerAreaPaint={(node: any, color, ctx) => {
+              ctx.beginPath();
+              ctx.arc(node.x, node.y, 15, 0, 2 * Math.PI);
+              ctx.fillStyle = color;
+              ctx.fill();
+            }}
+            linkColor={() => "#E5E7EB"}
+            linkWidth={1.6}
+            linkDirectionalArrowLength={5}
+            linkDirectionalArrowRelPos={1}
+            linkDirectionalParticles={1}
+            linkDirectionalParticleSpeed={0.004}
+            linkDirectionalParticleColor={() => "#6C63FF"}
+            linkCanvasObjectMode={() => "after"}
+            linkCanvasObject={(link: any, ctx) => {
+              const start = link.source;
+              const end = link.target;
+              if (!start?.x || !end?.x) return;
+              const mx = (start.x + end.x) / 2;
+              const my = (start.y + end.y) / 2;
+              ctx.font = "10px Inter, sans-serif";
+              ctx.textAlign = "center";
+              ctx.textBaseline = "middle";
+              ctx.fillStyle = "#9CA3AF";
+              ctx.fillText(link.label || "", mx, my - 5);
+            }}
+            onNodeClick={(node: any) => {
+              fgRef.current?.centerAt(node.x, node.y, 600);
+              fgRef.current?.zoom(2.5, 600);
+            }}
+            enableNodeDrag={true}
+            enableZoomInteraction={true}
+            cooldownTicks={220}
+            d3AlphaDecay={0.01}
+            d3VelocityDecay={0.35}
           />
+
+          <div style={{position:"absolute", top:16, left:16,
+            background:"rgba(255,255,255,0.96)", borderRadius:14, padding:"12px 16px",
+            border:"1px solid #E5E7EB", boxShadow:"0 8px 24px rgba(15, 23, 42, 0.06)", backdropFilter:"blur(8px)"}}>
+            <p style={{fontSize:11, fontWeight:600, color:"#6B7280",
+              marginBottom:8, textTransform:"uppercase", letterSpacing:1}}>
+              Entity Types
+            </p>
+            {Object.entries(NODE_COLORS)
+              .filter(([type]) => !["organization"].includes(type))
+              .map(([type, color]) => (
+                <div key={type} style={{display:"flex", alignItems:"center",
+                  gap:6, marginBottom:4}}>
+                  <div style={{width:8, height:8, borderRadius:"50%",
+                    backgroundColor:color}} />
+                  <span style={{fontSize:11, color:"#374151",
+                    textTransform:"capitalize"}}>{type}</span>
+                </div>
+              ))}
+          </div>
+          </>
         )}
       </div>
 
-      <div className="w-[280px] bg-white border-l border-[#E5E7EB] overflow-y-auto p-4">
-        <h3 className="text-[13px] font-semibold text-[#101827] mb-3">
-          Relationships ({triples.length})
-        </h3>
-        <div className="space-y-1.5">
+      <div className="w-[300px] bg-white border-l border-[#E5E7EB] overflow-y-auto p-4">
+        <div className="mb-4">
+          <h3 className="text-[13px] font-semibold text-[#101827]">
+            Relationships
+          </h3>
+          <p className="text-[11px] text-[#9CA3AF] mt-1">
+            {triples.length} links captured from KG memory
+          </p>
+        </div>
+        <div className="space-y-2">
           {triples.map((t) => (
             <div
               key={t.id}
-              className="text-[11px] text-[#6B7280] px-2 py-1.5 rounded-xl bg-[#FAFBFF] border border-[#E5E7EB]"
+              className="text-[11px] text-[#6B7280] px-3 py-2 rounded-2xl bg-[#FAFBFF] border border-[#E5E7EB] shadow-sm"
             >
               <span className="font-medium text-[#101827]">{t.subject}</span>
               <span className="mx-1.5 text-[#9CA3AF]">→</span>
@@ -138,7 +227,7 @@ export default function GraphScreen({
             </div>
           ))}
           {triples.length === 0 && (
-            <div className="text-[12px] text-[#9CA3AF] text-center py-6">
+            <div className="text-[12px] text-[#9CA3AF] text-center py-8">
               No triples yet
             </div>
           )}

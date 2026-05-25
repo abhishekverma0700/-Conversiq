@@ -46,7 +46,7 @@ def create_app():
                 app.logger.warning("Adding missing conversations.user_id column")
                 db.session.execute(text("ALTER TABLE conversations ADD COLUMN user_id TEXT"))
                 db.session.commit()
-        print("Database tables ready")
+        app.logger.info("Database tables ready")
         # Seed builtin personas from data/personas.json if table empty
         try:
             if Persona.query.count() == 0:
@@ -67,7 +67,7 @@ def create_app():
                     )
                     db.session.add(persona)
                 db.session.commit()
-                print("Seeded builtin personas")
+                app.logger.info("Seeded builtin personas")
         except Exception:
             app.logger.exception("Failed to seed personas")
 
@@ -84,6 +84,6 @@ def create_app():
 app = create_app()
 
 if __name__ == "__main__":
-    print("Starting server...")
-    print("Health: http://localhost:5000/api/health")
+    app.logger.info("Starting server...")
+    app.logger.info("Health: http://localhost:5000/api/health")
     app.run(debug=Config.DEBUG, port=5000)

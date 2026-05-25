@@ -3,7 +3,6 @@ import { Pin, Trash2 } from "lucide-react";
 import { motion } from "motion/react";
 import type { Conversation } from "../types";
 import { memoryConfig } from "../types";
-import { formatTime } from "./utils";
 
 export default function ConversationItem({
   conversation,
@@ -45,9 +44,6 @@ export default function ConversationItem({
             >
               {conversation.is_pinned ? "📌 " : ""}
               {conversation.title}
-            </span>
-            <span className="text-[10px] text-[#9CA3AF] shrink-0">
-              {formatTime(conversation.updated_at)}
             </span>
           </div>
           <p className="text-[11px] text-[#6B7280] truncate mt-1 leading-relaxed">

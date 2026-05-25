@@ -73,7 +73,6 @@ def get_summary_context_for_prompt(conversation_id: int) -> tuple:
 
     logger.info("Total messages: %s, Summary interval: %s", total_msgs, Config.SUMMARY_INTERVAL)
 
-    # SUMMARY TRIGGER — SUMMARY_INTERVAL se zyada messages hain?
     if total_msgs >= Config.SUMMARY_INTERVAL:
         # Keep the most recent N messages
         n_recent = Config.SUMMARY_INTERVAL

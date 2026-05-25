@@ -109,7 +109,12 @@ def send_message(conv_id):
 
     if memory_type == "buffer":
         history, removed = get_messages_for_prompt(conv_id)
-        history_without_current = [m for m in history if m["content"] != user_message]
+        # Remove only the LAST message if it matches current user message
+        # to avoid including the just-saved message in history
+        if history and history[-1]["content"] == user_message and history[-1]["role"] == "user":
+            history_without_current = history[:-1]
+        else:
+            history_without_current = history
         chain = build_simple_conversation_chain(system_prompt)
         ai_response = run_conversation_chain(
             chain,
@@ -122,7 +127,12 @@ def send_message(conv_id):
 
     elif memory_type == "summary":
         summary, recent_msgs = get_summary_context_for_prompt(conv_id)
-        recent_without_current = [m for m in recent_msgs if m["content"] != user_message]
+        # Remove only the LAST message if it matches current user message
+        # to avoid including the just-saved message in history
+        if recent_msgs and recent_msgs[-1]["content"] == user_message and recent_msgs[-1]["role"] == "user":
+            recent_without_current = recent_msgs[:-1]
+        else:
+            recent_without_current = recent_msgs
         if not summary:
             chain = build_simple_conversation_chain(system_prompt)
             ai_response = run_conversation_chain(
@@ -143,7 +153,12 @@ def send_message(conv_id):
 
     elif memory_type == "entity":
         history, _ = get_messages_for_prompt(conv_id)
-        history_without_current = [m for m in history if m["content"] != user_message]
+        # Remove only the LAST message if it matches current user message
+        # to avoid including the just-saved message in history
+        if history and history[-1]["content"] == user_message and history[-1]["role"] == "user":
+            history_without_current = history[:-1]
+        else:
+            history_without_current = history
         entity_context = get_entity_context_for_prompt(conv_id, user_message)
         chain = build_entity_chain(system_prompt)
         
@@ -160,7 +175,12 @@ def send_message(conv_id):
 
     elif memory_type == "kg":
         history, _ = get_messages_for_prompt(conv_id)
-        history_without_current = [m for m in history if m["content"] != user_message]
+        # Remove only the LAST message if it matches current user message
+        # to avoid including the just-saved message in history
+        if history and history[-1]["content"] == user_message and history[-1]["role"] == "user":
+            history_without_current = history[:-1]
+        else:
+            history_without_current = history
         kg_context = get_kg_context_for_prompt(conv_id, user_message)
         chain = build_kg_chain(system_prompt)
         ai_response = run_kg_chain_safe(
@@ -175,7 +195,12 @@ def send_message(conv_id):
 
     elif memory_type == "sequential":
         history, _ = get_messages_for_prompt(conv_id)
-        history_without_current = [m for m in history if m["content"] != user_message]
+        # Remove only the LAST message if it matches current user message
+        # to avoid including the just-saved message in history
+        if history and history[-1]["content"] == user_message and history[-1]["role"] == "user":
+            history_without_current = history[:-1]
+        else:
+            history_without_current = history
         result = run_sequential_chain(
             system_prompt=system_prompt,
             user_message=user_message,

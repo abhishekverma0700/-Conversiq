@@ -1,4 +1,4 @@
-const API_BASE = "http://localhost:5000/api";
+const API_BASE = "https://conversiq-2.onrender.com/api";
 
 export type AuthRequestContext = {
   accessToken?: string | null;
