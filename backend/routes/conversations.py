@@ -1,3 +1,5 @@
+import logging
+
 from flask import Blueprint, request, jsonify
 from models.database import db, Conversation, Message
 from services.auth import get_authenticated_user_id, get_owned_conversation_or_404
@@ -17,6 +19,9 @@ from services.chain_builder import (
     format_messages_for_langchain
 )
 from services.context_manager import get_token_budget_status
+
+
+logger = logging.getLogger(__name__)
 
 conversations_bp = Blueprint("conversations", __name__)
 

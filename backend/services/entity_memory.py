@@ -1,9 +1,13 @@
+import logging
+
 from models.database import db, Entity, Message
 from services.llm_client import get_precise_llm
 from services.context_manager import count_tokens
 from langchain_core.messages import HumanMessage
 import json
 
+
+logger = logging.getLogger(__name__)
 
 
 ENTITY_EXTRACTION_PROMPT = """You are an entity extractor. Extract named entities and their key facts from this conversation message.
@@ -63,9 +67,9 @@ def extract_entities_from_message(conversation_id: int, message_content: str, me
         raw = response.content.strip()
 
          # DEBUG — this will appear in the terminal
-        print(f"=== ENTITY EXTRACTION ===")
-        print(f"Message: {message_content}")
-        print(f"LLM Raw Response: {raw}")
+        logger.info("=== ENTITY EXTRACTION ===")
+        logger.info("Message: %s", message_content)
+        logger.info("LLM Raw Response: %s", raw)
 
         
         if "```json" in raw:
@@ -92,7 +96,7 @@ def extract_entities_from_message(conversation_id: int, message_content: str, me
         return saved
 
     except Exception as e:
-        print(f"Entity extraction error: {e}")
+        logger.error("Entity extraction error: %s", e)
         return []
 
 

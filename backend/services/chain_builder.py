@@ -183,7 +183,7 @@ def run_sequential_chain(
     from services.kg_memory import get_kg_context_for_prompt
 
     intent = classify_intent(user_message)
-    print(f"Intent: {intent}")
+    logger.info("Intent: %s", intent)
 
     entity_context = ""
     kg_context = ""

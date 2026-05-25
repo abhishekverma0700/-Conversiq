@@ -59,7 +59,7 @@ import {
 } from "recharts";
 
 // ─── API Configuration ───────────────────────────────────────────────────────
-const API_BASE = "https://conversiq-2.onrender.com/api";
+const API_BASE = "http://localhost:5000/api";
 
 type AuthRequestContext = {
   accessToken?: string | null;
@@ -67,17 +67,10 @@ type AuthRequestContext = {
 };
 
 function buildAuthHeaders(auth?: AuthRequestContext): HeadersInit {
-  const headers: Record<string, string> = {};
-
-  if (auth?.accessToken) {
-    headers.Authorization = `Bearer ${auth.accessToken}`;
-  }
-
-  if (auth?.userId) {
-    headers["X-User-Id"] = auth.userId;
-  }
-
-  return headers;
+  return {
+    Authorization: `Bearer ${auth?.accessToken || ""}`,
+    "X-User-Id": auth?.userId || "",
+  };
 }
 
 // ─── API Client ──────────────────────────────────────────────────────────────
@@ -191,25 +184,28 @@ const api = {
   },
 
   // Personas
-  listPersonas: async () => {
-    const res = await fetch(`${API_BASE}/personas`);
+  listPersonas: async (auth?: AuthRequestContext) => {
+    const res = await fetch(`${API_BASE}/personas`, {
+      headers: buildAuthHeaders(auth),
+    });
     if (!res.ok) throw new Error("Failed to fetch personas");
     return res.json();
   },
 
-  createPersona: async (data: object) => {
+  createPersona: async (data: object, auth?: AuthRequestContext) => {
     const res = await fetch(`${API_BASE}/personas`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...buildAuthHeaders(auth) },
       body: JSON.stringify(data),
     });
     if (!res.ok) throw new Error("Failed to create persona");
     return res.json();
   },
 
-  deletePersona: async (id: string) => {
+  deletePersona: async (id: string, auth?: AuthRequestContext) => {
     const res = await fetch(`${API_BASE}/personas/${id}`, {
       method: "DELETE",
+      headers: buildAuthHeaders(auth),
     });
     if (!res.ok) throw new Error("Failed to delete persona");
     return res.json();
@@ -279,8 +275,10 @@ const api = {
     return res.json();
   },
 
-  health: async () => {
-    const res = await fetch(`${API_BASE}/health`);
+  health: async (auth?: AuthRequestContext) => {
+    const res = await fetch(`${API_BASE}/health`, {
+      headers: buildAuthHeaders(auth),
+    });
     return res.json();
   },
 };
@@ -402,20 +400,20 @@ const memoryConfig: Record<
   string,
   { color: string; bg: string; label: string; dot: string }
 > = {
-  buffer: { color: "#6C63FF", bg: "#F0EFFF", label: "Buffer", dot: "#6C63FF" },
+  buffer: { color: "#7A1F2B", bg: "#F7E9EB", label: "Buffer", dot: "#7A1F2B" },
   summary: {
     color: "#F59E0B",
     bg: "#FFFBEB",
     label: "Summary",
     dot: "#F59E0B",
   },
-  entity: { color: "#10B981", bg: "#ECFDF5", label: "Entity", dot: "#10B981" },
-  kg: { color: "#8B5CF6", bg: "#F5F3FF", label: "KG", dot: "#8B5CF6" },
+  entity: { color: "#C8A96A", bg: "#FBF2DF", label: "Entity", dot: "#C8A96A" },
+  kg: { color: "#9B4B5A", bg: "#F8EDEF", label: "KG", dot: "#9B4B5A" },
   sequential: {
-    color: "#EC4899",
-    bg: "#FDF2F8",
+    color: "#B76E4E",
+    bg: "#FBECE6",
     label: "Sequential",
-    dot: "#EC4899",
+    dot: "#B76E4E",
   },
 };
 
@@ -428,16 +426,16 @@ const entityConfig: Record<
     label: string;
   }
 > = {
-  person: { color: "#6C63FF", bg: "#F0EFFF", icon: UserRound, label: "Person" },
-  org: { color: "#00D4AA", bg: "#E6FBF7", label: "Org", icon: Building },
+  person: { color: "#7A1F2B", bg: "#F7E9EB", icon: UserRound, label: "Person" },
+  org: { color: "#C8A96A", bg: "#FBF2DF", label: "Org", icon: Building },
   project: {
-    color: "#FF8A65",
-    bg: "#FFF3EE",
+    color: "#B76E4E",
+    bg: "#FBECE6",
     label: "Project",
     icon: FolderKanban,
   },
-  date: { color: "#EC4899", bg: "#FDF2F8", label: "Date", icon: CalendarDays },
-  concept: { color: "#A78BFA", bg: "#F5F3FF", label: "Concept", icon: Atom },
+  date: { color: "#A15B68", bg: "#F9E9EB", label: "Date", icon: CalendarDays },
+  concept: { color: "#9B4B5A", bg: "#F8EDEF", label: "Concept", icon: Atom },
   general: { color: "#64748B", bg: "#F1F5F9", label: "General", icon: Sparkles },
 };
 
@@ -488,7 +486,7 @@ function Toast({
   const colors = {
     success: "bg-[#10B981] text-white",
     error: "bg-[#EF4444] text-white",
-    info: "bg-[#6C63FF] text-white",
+    info: "bg-[#7A1F2B] text-white",
   };
 
   return (
@@ -533,7 +531,7 @@ function ConversationItem({
       onClick={onClick}
       className={`w-full text-left px-3 py-3 rounded-2xl transition-all duration-200 relative group border ${
         isSelected
-          ? "bg-[#F5F3FF] border-[#D8D4FF] shadow-[0_1px_8px_rgba(108,99,255,0.08)]"
+          ? "bg-[#F7E9EB] border-[#E2C6CA] shadow-[0_1px_8px_rgba(122,31,43,0.08)]"
           : hovered
           ? "bg-[#FBFBFF] border-[#EDF0F7] shadow-[0_1px_6px_rgba(15,23,42,0.04)]"
           : "bg-white border-transparent"
@@ -548,7 +546,7 @@ function ConversationItem({
           <div className="flex items-start justify-between gap-2">
             <span
               className={`text-[13px] font-semibold truncate leading-5 ${
-                isSelected ? "text-[#6C63FF]" : "text-[#1A1A2E]"
+                isSelected ? "text-[#7A1F2B]" : "text-[#24161A]"
               }`}
             >
               {conversation.is_pinned ? "📌 " : ""}
@@ -574,8 +572,9 @@ function ConversationItem({
       </div>
       {hovered && (
         <div className="absolute right-2 top-2.5 flex gap-1">
-          <button
-            className="p-1.5 hover:bg-[#EEF0FF] rounded-full transition-colors"
+          <div
+            role="button"
+            className="p-1.5 hover:bg-[#F7E9EB] rounded-full transition-colors cursor-pointer"
             onClick={(e) => {
               e.stopPropagation();
               onPin();
@@ -583,9 +582,10 @@ function ConversationItem({
             title={conversation.is_pinned ? "Unpin" : "Pin"}
           >
             <Pin className="w-3 h-3 text-[#6B7280]" />
-          </button>
-          <button
-            className="p-1.5 hover:bg-red-50 rounded-full transition-colors"
+          </div>
+          <div
+            role="button"
+            className="p-1.5 hover:bg-red-50 rounded-full transition-colors cursor-pointer"
             onClick={(e) => {
               e.stopPropagation();
               onDelete();
@@ -593,7 +593,7 @@ function ConversationItem({
             title="Delete"
           >
             <Trash2 className="w-3 h-3 text-[#EF4444]" />
-          </button>
+          </div>
         </div>
       )}
     </motion.button>
@@ -618,7 +618,7 @@ function MessageBubble({
       } slide-up-fade`}
     >
       {!isUser && (
-        <div className="w-8 h-8 rounded-full bg-[#6C63FF] flex items-center justify-center shrink-0 mb-1 shadow-sm text-white text-[13px]">
+        <div className="w-8 h-8 rounded-full bg-[#7A1F2B] flex items-center justify-center shrink-0 mb-1 shadow-sm text-white text-[13px]">
           🐥
         </div>
       )}
@@ -637,7 +637,7 @@ function MessageBubble({
               isUser
                 ? {
                     background:
-                      "linear-gradient(135deg, #6C63FF 0%, #00D4AA 100%)",
+                      "linear-gradient(135deg, #7A1F2B 0%, #C8A96A 100%)",
                     boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
                   }
                 : { boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }
@@ -646,7 +646,10 @@ function MessageBubble({
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
           </div>
         <span className="text-[11px] text-[#9CA3AF] px-1">
-          {new Date(message.timestamp).toLocaleTimeString([], {
+          {(message.timestamp instanceof Date && !isNaN(message.timestamp.getTime())
+            ? message.timestamp
+            : new Date()
+          ).toLocaleTimeString([], {
             hour: "2-digit",
             minute: "2-digit",
           })}
@@ -666,7 +669,7 @@ function TypingIndicator() {
       transition={{ duration: 0.3, ease: "easeOut" }}
       className="flex items-end gap-2.5 slide-up-fade"
     >
-      <div className="w-8 h-8 rounded-full bg-[#6C63FF] flex items-center justify-center shrink-0 shadow-sm text-white text-[13px]">
+      <div className="w-8 h-8 rounded-full bg-[#7A1F2B] flex items-center justify-center shrink-0 shadow-sm text-white text-[13px]">
         🐥
       </div>
       <div
@@ -757,13 +760,13 @@ function MiniGraph({
       nodeLabel="label"
       nodeColor={(node: any) => {
         const colors: Record<string, string> = {
-          person: "#6C63FF",
-          org: "#00D4AA",
-          project: "#FF8A65",
-          date: "#EC4899",
-          concept: "#A78BFA",
+          person: "#7A1F2B",
+          org: "#C8A96A",
+          project: "#B76E4E",
+          date: "#A15B68",
+          concept: "#9B4B5A",
         };
-        return colors[node.type] || "#6C63FF";
+        return colors[node.type] || "#7A1F2B";
       }}
       linkLabel="label"
       linkColor={() => "#374151"}
@@ -790,9 +793,9 @@ function TokenBar({
   const { used_tokens, total_budget, usage_percentage, is_near_limit, is_over_limit } = tokenInfo;
 
   const breakdown = [
-    { label: "System prompt", value: tokenInfo.system_prompt_tokens, color: "#6C63FF" },
-    { label: "Memory context", value: tokenInfo.memory_tokens, color: "#00D4AA" },
-    { label: "Recent messages", value: tokenInfo.recent_message_tokens, color: "#FF8A65" },
+    { label: "System prompt", value: tokenInfo.system_prompt_tokens, color: "#7A1F2B" },
+    { label: "Memory context", value: tokenInfo.memory_tokens, color: "#C8A96A" },
+    { label: "Recent messages", value: tokenInfo.recent_message_tokens, color: "#B76E4E" },
     { label: "Reserved (gen)", value: tokenInfo.generation_reserved, color: "#D6DCE3" },
   ];
 
@@ -958,9 +961,9 @@ function WelcomeScreen({
               <motion.button
                 whileTap={{ scale: 0.97 }}
                 onClick={onNewConversation}
-                className="inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-[14px] font-semibold text-white shadow-[0_10px_24px_rgba(108,99,255,0.22)] transition-transform duration-200 hover:scale-[1.01]"
+                className="inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-[14px] font-semibold text-white shadow-[0_10px_24px_rgba(122,31,43,0.22)] transition-transform duration-200 hover:scale-[1.01]"
                 style={{
-                  background: "linear-gradient(135deg, #6C63FF 0%, #00D4AA 100%)",
+                  background: "linear-gradient(135deg, #7A1F2B 0%, #C8A96A 100%)",
                 }}
               >
                 <Plus className="h-4 w-4" />
@@ -1121,16 +1124,16 @@ function MemoryPanel({
     <div className="h-full flex flex-col bg-white border-l border-[#E5E7EB]">
       {/* Header */}
       <div className="px-4 pt-4 pb-3 border-b border-[#E5E7EB]">
-        <div className="flex items-center gap-2 mb-3 rounded-2xl bg-[#FAFBFF] border border-[#ECEEF6] px-3 py-2.5 shadow-[0_2px_10px_rgba(15,23,42,0.03)]">
-          <Database className="w-4 h-4 text-[#6C63FF]" />
+        <div className="flex items-center gap-2 mb-3 rounded-2xl bg-[#FBF7F6] border border-[#EAD9DC] px-3 py-2.5 shadow-[0_2px_10px_rgba(122,31,43,0.03)]">
+          <Database className="w-4 h-4 text-[#7A1F2B]" />
           <span className="text-[13px] font-semibold text-[#101827]">
             Memory Inspector
           </span>
           <div className="ml-auto flex gap-1.5">
-            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#F0EFFF] text-[#6C63FF]">
+            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#F7E9EB] text-[#7A1F2B]">
               {entities.length} entities
             </span>
-            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#ECFDF5] text-[#10B981]">
+            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#FBF2DF] text-[#B76E4E]">
               {triples.length} relations
             </span>
           </div>
@@ -1138,7 +1141,7 @@ function MemoryPanel({
         {/* Refresh button */}
         <button
           onClick={fetchTabData}
-          className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[11px] text-[#6B7280] hover:text-[#6C63FF] hover:bg-[#F5F3FF] rounded-lg transition-colors mb-2"
+          className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[11px] text-[#6B7280] hover:text-[#7A1F2B] hover:bg-[#F7E9EB] rounded-lg transition-colors mb-2"
         >
           <RefreshCw className="w-3 h-3" />
           Refresh
@@ -1151,8 +1154,8 @@ function MemoryPanel({
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-1.5 rounded-full px-3 py-2 text-[11px] font-medium uppercase tracking-wide transition-colors relative shrink-0 ${
                 activeTab === tab.id
-                  ? "bg-[#F5F3FF] text-[#6C63FF]"
-                  : "text-[#8A94A6] hover:bg-[#F8F9FF] hover:text-[#6B7280]"
+                  ? "bg-[#F7E9EB] text-[#7A1F2B]"
+                  : "text-[#8A94A6] hover:bg-[#FBF7F6] hover:text-[#6B7280]"
               }`}
             >
               <tab.icon className="w-3.5 h-3.5" />
@@ -1160,7 +1163,7 @@ function MemoryPanel({
               {activeTab === tab.id && (
                 <motion.div
                   layoutId="tabUnderline"
-                  className="absolute bottom-0 left-3 right-3 h-0.5 bg-[#6C63FF] rounded-full"
+                  className="absolute bottom-0 left-3 right-3 h-0.5 bg-[#7A1F2B] rounded-full"
                 />
               )}
             </button>
@@ -1172,7 +1175,7 @@ function MemoryPanel({
       <div className="flex-1 overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center h-32">
-            <Loader2 className="w-5 h-5 text-[#6C63FF] animate-spin" />
+            <Loader2 className="w-5 h-5 text-[#7A1F2B] animate-spin" />
           </div>
         ) : (
           <AnimatePresence mode="wait">
@@ -1187,7 +1190,7 @@ function MemoryPanel({
               >
                 {entities.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-[#D0CFFE] bg-[#FAFAFF] p-5 text-center">
-                    <div className="mx-auto w-9 h-9 rounded-full bg-[#F0EFFF] text-[#6C63FF] flex items-center justify-center mb-2">
+                    <div className="mx-auto w-9 h-9 rounded-full bg-[#F7E9EB] text-[#7A1F2B] flex items-center justify-center mb-2">
                       <Database className="w-4 h-4" />
                     </div>
                     <div className="text-[12px] font-semibold text-[#1A1A2E]">
@@ -1244,7 +1247,7 @@ function MemoryPanel({
                             {t.subject}
                           </span>
                           <span className="mx-1.5 text-[#9CA3AF]">→</span>
-                          <span className="text-[#6C63FF]">{t.predicate}</span>
+                          <span className="text-[#7A1F2B]">{t.predicate}</span>
                           <span className="mx-1.5 text-[#9CA3AF]">→</span>
                           <span className="font-medium text-[#101827]">
                             {t.object}
@@ -1268,7 +1271,7 @@ function MemoryPanel({
               >
                 {!summary ? (
                   <div className="rounded-xl border border-dashed border-[#D0CFFE] bg-[#FAFAFF] p-5 text-center">
-                    <div className="mx-auto w-9 h-9 rounded-full bg-[#F0EFFF] text-[#6C63FF] flex items-center justify-center mb-2">
+                    <div className="mx-auto w-9 h-9 rounded-full bg-[#F7E9EB] text-[#7A1F2B] flex items-center justify-center mb-2">
                       <FileClock className="w-4 h-4" />
                     </div>
                     <div className="text-[12px] font-semibold text-[#1A1A2E]">
@@ -1352,7 +1355,7 @@ function PersonaCard({
       whileHover={{ y: -4, boxShadow: "0 10px 22px rgba(0,0,0,0.08)" }}
       className={`w-full text-left p-4 rounded-xl border transition-all duration-200 relative ${
         isActive
-          ? "border-[#6C63FF] bg-[#F0EFFF] shadow-sm"
+          ? "border-[#7A1F2B] bg-[#F7E9EB] shadow-sm"
           : "border-[#E5E7EB] bg-white hover:border-[#D0CFFE]"
       }`}
       style={{
@@ -1366,7 +1369,7 @@ function PersonaCard({
           <div
             className="w-12 h-12 rounded-full flex items-center justify-center text-2xl"
             style={{
-              background: "linear-gradient(135deg, #6C63FF 0%, #00D4AA 100%)",
+              background: "linear-gradient(135deg, #7A1F2B 0%, #C8A96A 100%)",
             }}
           >
             {persona.avatar}
@@ -1383,7 +1386,7 @@ function PersonaCard({
             </div>
           </div>
           {isActive && (
-            <span className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#6C63FF] text-white">
+            <span className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#7A1F2B] text-white">
               Active
             </span>
           )}
@@ -1391,7 +1394,7 @@ function PersonaCard({
         <p className="text-[12px] text-[#6B7280] leading-relaxed">
           {persona.description}
         </p>
-        <div className="mt-3 inline-flex items-center rounded-full border border-[#E5E7EB] bg-[#F8F9FF] px-2 py-1 text-[10px] font-medium text-[#6B7280]">
+        <div className="mt-3 inline-flex items-center rounded-full border border-[#E5E7EB] bg-[#FBF7F6] px-2 py-1 text-[10px] font-medium text-[#6B7280]">
           {persona.domain}
         </div>
       </button>
@@ -1426,8 +1429,8 @@ function NavButton({
       title={tooltip}
       className={`p-2.5 rounded-lg transition-all duration-200 hover:scale-[1.02] flex items-center justify-center ${
         active
-          ? "bg-[#F0EFFF] text-[#6C63FF]"
-          : "text-[#9CA3AF] hover:text-[#6B7280] hover:bg-[#F8F9FF]"
+          ? "bg-[#F7E9EB] text-[#7A1F2B]"
+          : "text-[#9CA3AF] hover:text-[#6B7280] hover:bg-[#FBF7F6]"
       }`}
     >
       <Icon className="w-4.5 h-4.5" />
@@ -1464,7 +1467,7 @@ function AuthField({
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           required
-          className="w-full rounded-2xl border border-[#E5E7EB] bg-white py-3 pl-10 pr-12 text-[14px] text-[#101827] placeholder:text-[#94A3B8] shadow-[0_1px_4px_rgba(15,23,42,0.03)] transition-all focus:border-[#CFCFF7] focus:outline-none focus:ring-2 focus:ring-[#6C63FF]/15"
+          className="w-full rounded-2xl border border-[#E5E7EB] bg-white py-3 pl-10 pr-12 text-[14px] text-[#101827] placeholder:text-[#94A3B8] shadow-[0_1px_4px_rgba(15,23,42,0.03)] transition-all focus:border-[#D8B7BC] focus:outline-none focus:ring-2 focus:ring-[#7A1F2B]/15"
         />
         {rightSlot}
       </div>
@@ -1640,7 +1643,7 @@ function AuthScreen({
               onClick={() => void onSubmit(form)}
               className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl px-5 py-3.5 text-[14px] font-semibold text-white shadow-[0_14px_28px_rgba(108,99,255,0.22)] transition-transform hover:scale-[1.01]"
               style={{
-                background: "linear-gradient(135deg, #6C63FF 0%, #00D4AA 100%)",
+                background: "linear-gradient(135deg, #7A1F2B 0%, #C8A96A 100%)",
               }}
             >
               {isLogin ? (
@@ -1656,7 +1659,7 @@ function AuthScreen({
               <button
                 type="button"
                 onClick={() => onSwitchMode(isLogin ? "register" : "login")}
-                className="font-semibold text-[#6C63FF] transition-colors hover:text-[#5B56E8]"
+                className="font-semibold text-[#7A1F2B] transition-colors hover:text-[#6A1A23]"
               >
                 {isLogin ? "Register" : "Login"}
               </button>
@@ -1712,7 +1715,7 @@ function ProfileMenu({
           >
             <div className="border-b border-[#F3F4F6] px-4 py-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-[#6C63FF] to-[#00D4AA] text-white shadow-sm">
+                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-[#7A1F2B] to-[#C8A96A] text-white shadow-sm">
                   <UserRound className="h-5 w-5" />
                 </div>
                 <div className="min-w-0 flex-1">
@@ -1733,16 +1736,16 @@ function ProfileMenu({
                 <>
                   <button
                     onClick={onClose}
-                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[13px] font-medium text-[#101827] transition-colors hover:bg-[#F8F9FF]"
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[13px] font-medium text-[#101827] transition-colors hover:bg-[#FBF7F6]"
                   >
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F5F3FF] text-[#6C63FF]">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F7E9EB] text-[#7A1F2B]">
                       <UserRound className="h-4 w-4" />
                     </span>
                     <span>Account</span>
                   </button>
                   <button
                     onClick={onLogout}
-                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[13px] font-medium text-[#101827] transition-colors hover:bg-[#F8F9FF]"
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[13px] font-medium text-[#101827] transition-colors hover:bg-[#FBF7F6]"
                   >
                     <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#FEE2E2] text-[#EF4444]">
                       <LogIn className="h-4 w-4" />
@@ -1754,16 +1757,16 @@ function ProfileMenu({
                 <>
                   <button
                     onClick={onLogin}
-                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[13px] font-medium text-[#101827] transition-colors hover:bg-[#F8F9FF]"
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[13px] font-medium text-[#101827] transition-colors hover:bg-[#FBF7F6]"
                   >
-                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F5F3FF] text-[#6C63FF]">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F7E9EB] text-[#7A1F2B]">
                       <LogIn className="h-4 w-4" />
                     </span>
                     <span>Login</span>
                   </button>
                   <button
                     onClick={onRegister}
-                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[13px] font-medium text-[#101827] transition-colors hover:bg-[#F8F9FF]"
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[13px] font-medium text-[#101827] transition-colors hover:bg-[#FBF7F6]"
                   >
                     <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#E6FBF7] text-[#00A88B]">
                       <UserPlus className="h-4 w-4" />
@@ -1786,17 +1789,22 @@ function StatsScreen({ authContext }: { authContext?: AuthRequestContext }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(API_BASE + "/stats")
+    fetch(API_BASE + "/stats", {
+      headers: {
+        Authorization: `Bearer ${authContext?.accessToken || ""}`,
+        "X-User-Id": authContext?.userId || "",
+      },
+    })
       .then((res) => res.json())
       .then((data) => setRealStats(data))
       .catch((err) => console.error("Stats fetch failed:", err))
       .finally(() => setLoading(false));
-  }, []);
+  }, [authContext]);
 
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
-        <Loader2 className="w-6 h-6 text-[#6C63FF] animate-spin" />
+        <Loader2 className="w-6 h-6 text-[#7A1F2B] animate-spin" />
       </div>
     );
   }
@@ -1806,14 +1814,14 @@ function StatsScreen({ authContext }: { authContext?: AuthRequestContext }) {
       label: "Conversations",
       value: realStats?.total_conversations ?? 0,
       icon: MessageCircleMore,
-      color: "#6C63FF",
+      color: "#7A1F2B",
       delta: `~${realStats?.average_messages_per_conversation ?? 0} msgs avg`,
     },
     {
       label: "Messages",
       value: realStats?.total_messages ?? 0,
       icon: Send,
-      color: "#00D4AA",
+      color: "#C8A96A",
       delta: "Total sent",
     },
     {
@@ -1861,13 +1869,13 @@ function StatsScreen({ authContext }: { authContext?: AuthRequestContext }) {
                     style={{ color: s.color }}
                   />
                 </div>
-                <TrendingUp className="w-3.5 h-3.5 text-[#00D4AA]" />
+                <TrendingUp className="w-3.5 h-3.5 text-[#C8A96A]" />
               </div>
               <div className="text-[22px] font-bold text-[#1A1A2E] mb-0.5">
                 {s.value.toLocaleString()}
               </div>
               <div className="text-[11px] text-[#6B7280]">{s.label}</div>
-              <div className="text-[11px] text-[#00D4AA] mt-1">{s.delta}</div>
+              <div className="text-[11px] text-[#C8A96A] mt-1">{s.delta}</div>
             </motion.div>
           ))}
         </div>
@@ -1884,7 +1892,7 @@ function StatsScreen({ authContext }: { authContext?: AuthRequestContext }) {
             <h3 className="text-[14px] font-semibold text-[#1A1A2E] mb-2">
               Total Tokens Consumed
             </h3>
-            <div className="text-[32px] font-bold text-[#6C63FF]">
+            <div className="text-[32px] font-bold text-[#7A1F2B]">
               {realStats.total_tokens_used.toLocaleString()}
             </div>
             <div className="text-[12px] text-[#9CA3AF]">
@@ -2006,13 +2014,13 @@ export default function App() {
   useEffect(() => {
     // Check backend health
     api
-      .health()
+      .health(authContext)
       .then(() => setBackendOnline(true))
       .catch(() => setBackendOnline(false));
 
     // Load personas
     api
-      .listPersonas()
+      .listPersonas(authContext)
       .then((data) => {
         setPersonas(data);
         let defaultPersona = DEFAULT_GENERAL_ASSISTANT_PERSONA;
@@ -2025,7 +2033,7 @@ export default function App() {
         setSelectedPersona(defaultPersona);
       })
       .catch(() => {});
-  }, []);
+  }, [authContext]);
 
   useEffect(() => {
     const handler = () => {
@@ -2128,22 +2136,14 @@ export default function App() {
   const handleSendMessage = useCallback(async () => {
     const text = inputValue.trim();
     if (!text || !selectedConvId) return;
-    setIsTyping(false);
-    const streamingId = `msg-${Date.now()}`;
 
     const userMsg: Message = {
-      id: `tmp-${Date.now()}`,
+      id: `user-${Date.now()}`,
       role: "user",
       content: text,
       timestamp: new Date(),
     };
     setMessages((prev) => [...prev, userMsg]);
-    setMessages((prev) => [...prev, {
-      id: streamingId,
-      role: "assistant" as const,
-      content: "",
-      timestamp: new Date()
-    }]);
     setInputValue("");
 
     try {
@@ -2151,59 +2151,27 @@ export default function App() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {})
+          Authorization: `Bearer ${session?.access_token || ""}`,
+          "X-User-Id": session?.user?.id || "",
         },
         body: JSON.stringify({ message: text }),
       });
 
-      if (!res.ok || !res.body) {
-        throw new Error("Failed to send message");
+      const data = await res.json();
+
+      if (data.response) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `assistant-${Date.now() + 1}`,
+            role: "assistant" as const,
+            content: data.response,
+            timestamp: new Date(),
+          },
+        ]);
       }
-
-      const reader = res.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const raw = line.slice(6).trim();
-            if (raw === "[DONE]") break;
-            try {
-              const parsed = JSON.parse(raw);
-              if (parsed.response) {
-                setMessages((prev) => prev.map(m =>
-                  m.id === streamingId
-                    ? { ...m, content: parsed.response }
-                    : m
-                ));
-              }
-            } catch (e) {}
-          }
-        }
-      }
-
-      // Update conversation list title
-      setConversations((prev) =>
-        prev.map((c) =>
-          c.id === selectedConvId
-            ? {
-                ...c,
-                title:
-                  c.title === "New Chat" ? text.slice(0, 50) : c.title,
-                message_count: c.message_count + 2,
-              }
-            : c
-        )
-      );
-    } catch (err: any) {
-      showToast("Failed to get response. Is backend running?", "error");
-      setMessages((prev) => prev.filter((m) => m.id !== userMsg.id && m.id !== streamingId));
+    } catch (err) {
+      console.error("Failed:", err);
     } finally {
       setIsTyping(false);
     }
@@ -2310,13 +2278,13 @@ export default function App() {
   // ── Delete persona ─────────────────────────────────────────────────────
   const handleDeletePersona = useCallback(async (id: string) => {
     try {
-      await api.deletePersona(id);
+      await api.deletePersona(id, authContext);
       setPersonas((prev) => prev.filter((p) => p.id !== id));
       showToast("Persona deleted", "success");
     } catch {
       showToast("Cannot delete builtin persona", "error");
     }
-  }, []);
+  }, [authContext]);
 
   const handleAuthSubmit = useCallback(
     async (form: AuthFormValues) => {
@@ -2426,11 +2394,11 @@ export default function App() {
   // Auth screen
   if (authMode) {
     return (
-      <div className="flex h-[100dvh] w-full bg-[#F8F9FF] overflow-hidden font-[Inter,sans-serif] text-[#1A1A2E]">
+      <div className="flex h-[100dvh] w-full bg-[#FBF7F6] overflow-hidden font-[Inter,sans-serif] text-[#24161A]">
         <div className="flex flex-1 min-w-0 flex-col">
           <header className="h-16 bg-white border-b border-[#E5E7EB] flex items-center justify-between px-4 sm:px-5 shrink-0 z-10">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[#6C63FF] to-[#00D4AA] flex items-center justify-center shrink-0 shadow-sm">
+              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[#7A1F2B] to-[#C8A96A] flex items-center justify-center shrink-0 shadow-sm">
                 <Sparkles className="w-4.5 h-4.5 text-white" />
               </div>
               <div className="min-w-0">
@@ -2454,7 +2422,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-[100dvh] w-full bg-[#F8F9FF] overflow-hidden font-[Inter,sans-serif] text-[#1A1A2E]">
+    <div className="flex h-[100dvh] w-full bg-[#FBF7F6] overflow-hidden font-[Inter,sans-serif] text-[#24161A]">
       {/* Toast */}
       <AnimatePresence>
         {toast && (
@@ -2468,7 +2436,7 @@ export default function App() {
 
       {/* Backend offline warning */}
       {backendOnline === false && (
-        <div className="fixed top-0 left-0 right-0 z-[200] bg-red-500 text-white text-[12px] py-2 text-center flex items-center justify-center gap-2">
+        <div className="fixed top-0 left-0 right-0 z-[200] bg-[#7A1F2B] text-white text-[12px] py-2 text-center flex items-center justify-center gap-2">
           <AlertCircle className="w-3.5 h-3.5" />
           Backend offline — start Flask server on port 5000
         </div>
@@ -2502,7 +2470,7 @@ export default function App() {
       >
         {/* Logo */}
         <div className="px-3 py-3 border-b border-[#F3F4F6] flex items-center gap-2.5 shrink-0 min-h-[64px]">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#6C63FF] to-[#00D4AA] flex items-center justify-center shrink-0 shadow-sm">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#7A1F2B] to-[#C8A96A] flex items-center justify-center shrink-0 shadow-sm">
             <Sparkles className="w-4.5 h-4.5 text-white" />
           </div>
           {!sidebarCollapsed && (
@@ -2511,7 +2479,7 @@ export default function App() {
                 fontFamily: "'Dancing Script', cursive",
                 fontSize: "30px",
                 fontWeight: "700",
-                background: "linear-gradient(135deg, #7F1D1D, #C41E3A)",
+                background: "linear-gradient(135deg, #7A1F2B, #B76E4E)",
                 WebkitBackgroundClip: "text",
                 WebkitTextFillColor: "transparent",
                 letterSpacing: "-0.3px",
@@ -2523,7 +2491,7 @@ export default function App() {
           {!isDesktop && (
             <button
               onClick={() => setSidebarOpen(false)}
-              className="ml-auto p-1 hover:bg-[#F3F4F6] rounded-lg transition-colors"
+              className="ml-auto p-1 hover:bg-[#F7E9EB] rounded-lg transition-colors"
             >
               <X className="w-4 h-4 text-[#6B7280]" />
             </button>
@@ -2542,7 +2510,7 @@ export default function App() {
                 handleNewConversation();
                 setSidebarCollapsed(false);
               }}
-              className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#6C63FF] to-[#00D4AA] flex items-center justify-center hover:shadow-md transition-all duration-200"
+              className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#7A1F2B] to-[#C8A96A] flex items-center justify-center hover:shadow-md transition-all duration-200"
             >
               <Plus className="w-4 h-4 text-white" />
             </button>
@@ -2552,7 +2520,7 @@ export default function App() {
                 onClick={handleNewConversation}
                 className="w-full py-3 px-3.5 text-white text-[13px] font-semibold rounded-2xl flex items-center justify-center gap-2 hover:opacity-90 transition-all duration-200"
                 style={{
-                  background: "linear-gradient(135deg, #6C63FF 0%, #00D4AA 100%)",
+                  background: "linear-gradient(135deg, #7A1F2B 0%, #C8A96A 100%)",
                 }}
               >
                 <Plus className="w-4 h-4" />
@@ -2565,7 +2533,7 @@ export default function App() {
                   value={searchQuery}
                   onChange={(e) => handleSearch(e.target.value)}
                   placeholder="Search conversations..."
-                  className="w-full rounded-2xl border border-[#ECEEF6] bg-[#FAFBFF] py-2.5 pl-9 pr-3 text-[12px] text-[#101827] placeholder-[#98A2B3] focus:border-[#CFCFF7] focus:outline-none focus:ring-2 focus:ring-[#6C63FF]/15"
+                  className="w-full rounded-2xl border border-[#EAD9DC] bg-[#FBF7F6] py-2.5 pl-9 pr-3 text-[12px] text-[#24161A] placeholder-[#98A2B3] focus:border-[#D8B7BC] focus:outline-none focus:ring-2 focus:ring-[#7A1F2B]/15"
                 />
               </div>
             </>
@@ -2577,7 +2545,7 @@ export default function App() {
           <div className="flex-1 overflow-y-auto px-2 pb-2">
             {conversationsLoading ? (
               <div className="flex justify-center py-8">
-                <Loader2 className="w-5 h-5 text-[#6C63FF] animate-spin" />
+                <Loader2 className="w-5 h-5 text-[#7A1F2B] animate-spin" />
               </div>
             ) : (
               <>
@@ -2797,7 +2765,7 @@ export default function App() {
         <div className="flex-1 overflow-hidden">
           {/* ── CHAT SCREEN ── */}
           {currentScreen === "chat" && (
-            <div className="h-full flex bg-[#F8F9FF] pb-14 md:pb-0">
+            <div className="h-full flex bg-[#FBF7F6] pb-14 md:pb-0">
               <div className="flex-1 flex flex-col min-w-0">
                 {!selectedConvId ? (
                   <WelcomeScreen onNewConversation={handleNewConversation} />
@@ -2807,9 +2775,9 @@ export default function App() {
                     <div
                       className="flex-1 overflow-y-auto px-6 py-6"
                       style={{
-                        backgroundColor: "#F8F9FF",
+                        backgroundColor: "#FBF7F6",
                         backgroundImage:
-                          "radial-gradient(circle, #6C63FF15 1px, transparent 1px)",
+                          "radial-gradient(circle, #7A1F2B15 1px, transparent 1px)",
                         backgroundSize: "24px 24px",
                       }}
                     >
@@ -2837,7 +2805,7 @@ export default function App() {
                     {/* Input */}
                     <div className="border-t border-[#E5E7EB] bg-white px-4 py-4 sm:px-6 shrink-0">
                       <div className="max-w-2xl mx-auto">
-                        <div className="flex items-end gap-3 bg-white border border-[#E5E7EB] rounded-[28px] px-4 py-3 focus-within:ring-2 focus-within:ring-[#6C63FF]/20 focus-within:border-[#6C63FF]/40 transition-all shadow-[0_2px_12px_rgba(0,0,0,0.05)]">
+                        <div className="flex items-end gap-3 bg-white border border-[#E5E7EB] rounded-[28px] px-4 py-3 focus-within:ring-2 focus-within:ring-[#7A1F2B]/20 focus-within:border-[#D8B7BC]/40 transition-all shadow-[0_2px_12px_rgba(0,0,0,0.05)]">
                           <textarea
                             ref={textareaRef}
                             value={inputValue}
@@ -2865,7 +2833,7 @@ export default function App() {
                             className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
                             style={{
                               background:
-                                "linear-gradient(135deg, #6C63FF 0%, #00D4AA 100%)",
+                                "linear-gradient(135deg, #7A1F2B 0%, #C8A96A 100%)",
                             }}
                           >
                             {isTyping ? (
@@ -2956,6 +2924,7 @@ export default function App() {
                   ))}
                   {/* Create custom */}
                   <CreatePersonaCard
+                    authContext={authContext}
                     onCreated={(persona) => {
                       setPersonas((prev) => [...prev, persona]);
                       showToast("Persona created!", "success");
@@ -3120,16 +3089,16 @@ function GraphScreen({
   return (
     <div className="h-full flex">
       <div
-        className="flex-1 relative overflow-hidden bg-[#F8F9FF]"
+        className="flex-1 relative overflow-hidden bg-[#FBF7F6]"
         style={{
           backgroundImage:
-            "radial-gradient(circle, rgba(108,99,255,0.08) 1px, transparent 1px)",
+            "radial-gradient(circle, rgba(122,31,43,0.08) 1px, transparent 1px)",
           backgroundSize: "24px 24px",
         }}
       >
         {loading ? (
           <div className="h-full flex items-center justify-center">
-            <Loader2 className="w-6 h-6 text-[#6C63FF] animate-spin" />
+            <Loader2 className="w-6 h-6 text-[#7A1F2B] animate-spin" />
           </div>
         ) : nodes.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-[#9CA3AF] gap-3">
@@ -3156,13 +3125,13 @@ function GraphScreen({
             nodeLabel="label"
             nodeColor={(node: any) => {
               const colors: Record<string, string> = {
-                person: "#6C63FF",
-                org: "#00D4AA",
-                project: "#FF8A65",
-                date: "#EC4899",
-                concept: "#A78BFA",
+                person: "#7A1F2B",
+                org: "#C8A96A",
+                project: "#B76E4E",
+                date: "#A15B68",
+                concept: "#9B4B5A",
               };
-              return colors[node.type] || "#6C63FF";
+              return colors[node.type] || "#7A1F2B";
             }}
             linkLabel="label"
             linkColor={() => "#374151"}
@@ -3186,7 +3155,7 @@ function GraphScreen({
             >
               <span className="font-medium text-[#101827]">{t.subject}</span>
               <span className="mx-1.5 text-[#9CA3AF]">→</span>
-              <span className="text-[#6C63FF]">{t.predicate}</span>
+              <span className="text-[#7A1F2B]">{t.predicate}</span>
               <span className="mx-1.5 text-[#9CA3AF]">→</span>
               <span className="font-medium text-[#101827]">{t.object}</span>
             </div>
@@ -3281,12 +3250,12 @@ function EntitiesScreen({
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSearchGlobal()}
                 placeholder="Search entities..."
-                className="pl-9 pr-4 py-2 bg-white border border-[#E5E7EB] rounded-full text-[13px] focus:outline-none focus:ring-2 focus:ring-[#6C63FF]/20 w-48"
+                className="pl-9 pr-4 py-2 bg-white border border-[#E5E7EB] rounded-full text-[13px] focus:outline-none focus:ring-2 focus:ring-[#7A1F2B]/20 w-48"
               />
             </div>
             <button
               onClick={handleSearchGlobal}
-              className="px-3 py-2 rounded-full bg-[#6C63FF] text-white text-[12px] font-medium"
+              className="px-3 py-2 rounded-full bg-[#7A1F2B] text-white text-[12px] font-medium"
             >
               Search All
             </button>
@@ -3312,7 +3281,7 @@ function EntitiesScreen({
 
         {loading ? (
           <div className="flex justify-center py-12">
-            <Loader2 className="w-6 h-6 text-[#6C63FF] animate-spin" />
+            <Loader2 className="w-6 h-6 text-[#7A1F2B] animate-spin" />
           </div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-12 text-[#9CA3AF]">
@@ -3343,8 +3312,10 @@ function EntitiesScreen({
 
 // ─── Create Persona Card ──────────────────────────────────────────────────
 function CreatePersonaCard({
+  authContext,
   onCreated,
 }: {
+  authContext?: AuthRequestContext;
   onCreated: (persona: Persona) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -3362,7 +3333,7 @@ function CreatePersonaCard({
     if (!form.name || !form.system_prompt) return;
     setLoading(true);
     try {
-      const persona = await api.createPersona(form);
+      const persona = await api.createPersona(form, authContext);
       onCreated(persona);
       setOpen(false);
       setForm({
@@ -3385,9 +3356,9 @@ function CreatePersonaCard({
         whileHover={{ y: -4, boxShadow: "0 10px 22px rgba(0,0,0,0.06)" }}
         whileTap={{ scale: 0.98 }}
         onClick={() => setOpen(true)}
-        className="w-full min-h-[172px] rounded-xl border-2 border-dashed border-[#CFCFF7] bg-white text-[#6C63FF] flex flex-col items-center justify-center gap-2"
+        className="w-full min-h-[172px] rounded-xl border-2 border-dashed border-[#D8B7BC] bg-white text-[#7A1F2B] flex flex-col items-center justify-center gap-2"
       >
-        <div className="w-10 h-10 rounded-full bg-[#F0EFFF] flex items-center justify-center">
+        <div className="w-10 h-10 rounded-full bg-[#F7E9EB] flex items-center justify-center">
           <Plus className="w-5 h-5" />
         </div>
         <div className="text-[13px] font-semibold">Create Custom</div>
@@ -3399,7 +3370,7 @@ function CreatePersonaCard({
   }
 
   return (
-    <div className="rounded-xl border-2 border-[#6C63FF] bg-white p-4 space-y-3">
+    <div className="rounded-xl border-2 border-[#7A1F2B] bg-white p-4 space-y-3">
       <div className="flex items-center justify-between mb-1">
         <span className="text-[13px] font-semibold text-[#1A1A2E]">
           New Persona
@@ -3412,13 +3383,13 @@ function CreatePersonaCard({
         </button>
       </div>
       <input
-        className="w-full border border-[#E5E7EB] rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#6C63FF]/20"
+        className="w-full border border-[#E5E7EB] rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#7A1F2B]/20"
         placeholder="Name *"
         value={form.name}
         onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
       />
       <input
-        className="w-full border border-[#E5E7EB] rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#6C63FF]/20"
+        className="w-full border border-[#E5E7EB] rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#7A1F2B]/20"
         placeholder="Description"
         value={form.description}
         onChange={(e) =>
@@ -3426,7 +3397,7 @@ function CreatePersonaCard({
         }
       />
       <textarea
-        className="w-full border border-[#E5E7EB] rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#6C63FF]/20 resize-none"
+        className="w-full border border-[#E5E7EB] rounded-xl px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#7A1F2B]/20 resize-none"
         placeholder="System prompt *"
         rows={3}
         value={form.system_prompt}
@@ -3460,7 +3431,7 @@ function CreatePersonaCard({
         disabled={loading || !form.name || !form.system_prompt}
         className="w-full py-2.5 rounded-xl text-white text-[13px] font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
         style={{
-          background: "linear-gradient(135deg, #6C63FF 0%, #00D4AA 100%)",
+          background: "linear-gradient(135deg, #7A1F2B 0%, #C8A96A 100%)",
         }}
       >
         {loading ? (

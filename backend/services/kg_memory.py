@@ -1,8 +1,13 @@
+import logging
+
 from models.database import db, KGTriple
 from services.llm_client import get_precise_llm
 from services.context_manager import count_tokens
 from langchain_core.messages import HumanMessage
 import json
+
+
+logger = logging.getLogger(__name__)
 
 
 KG_EXTRACTION_PROMPT = """You are a knowledge graph builder. Extract relationship triples from this message.
@@ -75,7 +80,7 @@ def extract_triples_from_message(conversation_id: int, message_content: str, mes
         return saved
 
     except Exception as e:
-        print(f"KG extraction error: {e}")
+        logger.error("KG extraction error: %s", e)
         return []
 
 

@@ -1,6 +1,11 @@
+import logging
+
 from models.database import db, Message
 from services.context_manager import count_tokens, truncate_messages_to_fit
 from config import Config
+
+
+logger = logging.getLogger(__name__)
 
 
 def save_message(conversation_id: int, role: str, content: str):

@@ -1,8 +1,13 @@
+import logging
+
 from models.database import db, Message, ConversationSummary
 from services.context_manager import count_tokens
 from services.llm_client import get_precise_llm
 from config import Config
 from langchain_core.messages import HumanMessage
+
+
+logger = logging.getLogger(__name__)
 
 SUMMARY_PROMPT = """You are a conversation summarizer.
 Summarize the following conversation concisely but completely.
@@ -35,7 +40,7 @@ def create_summary(conversation_id: int, messages_to_summarize: list) -> Convers
         response = llm.invoke([HumanMessage(content=prompt)])
         summary_text = response.content.strip()
     except Exception as e:
-        print(f"Summary LLM error: {e}")
+        logger.error("Summary LLM error: %s", e)
         summary_text = "Summary generation failed."
 
     summary = ConversationSummary(
@@ -47,7 +52,7 @@ def create_summary(conversation_id: int, messages_to_summarize: list) -> Convers
     db.session.add(summary)
     db.session.commit()
 
-    print(f"✅ Summary created: {summary_text[:100]}...")
+    logger.info("Summary created: %s...", summary_text[:100])
     return summary
 
 
@@ -66,7 +71,7 @@ def get_summary_context_for_prompt(conversation_id: int) -> tuple:
     msgs_as_dicts = [{"role": m.role, "content": m.content} for m in all_messages]
     total_msgs = len(msgs_as_dicts)
 
-    print(f"Total messages: {total_msgs}, Summary interval: {Config.SUMMARY_INTERVAL}")
+    logger.info("Total messages: %s, Summary interval: %s", total_msgs, Config.SUMMARY_INTERVAL)
 
     # SUMMARY TRIGGER — SUMMARY_INTERVAL se zyada messages hain?
     if total_msgs >= Config.SUMMARY_INTERVAL:
@@ -76,7 +81,7 @@ def get_summary_context_for_prompt(conversation_id: int) -> tuple:
         recent_messages = msgs_as_dicts[-n_recent:]
 
         if to_summarize:
-            print(f"Triggering summarization for {len(to_summarize)} messages...")
+            logger.info("Triggering summarization for %s messages...", len(to_summarize))
 
             # Include the existing summary as well
             existing_summary = get_latest_summary(conversation_id)
