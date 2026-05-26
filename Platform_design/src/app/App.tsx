@@ -25,8 +25,9 @@ import AuthScreen from "../components/AuthScreen";
 import StatsScreen from "../components/StatsScreen";
 import GraphScreen from "../components/GraphScreen";
 import EntitiesScreen from "../components/EntitiesScreen";
+import MemoryComparisonScreen from "../components/MemoryComparisonScreen";
 import CreatePersonaCard from "../components/CreatePersonaCard";
-import { Send, Search, Plus, SlidersHorizontal, Pin, Database, Brain, Workflow, FileClock, Activity, UserRound, UserPlus, LogIn, Building, FolderKanban, CalendarDays, Atom, TrendingUp, Clock, MessageCircleMore, ChevronLeft, ChevronRight, Menu, X, Sparkles, PanelRight, Mail, Lock, Eye, EyeOff, ArrowLeft, RefreshCw, Download, Upload, AlertCircle, Loader2 } from "lucide-react";
+import { Send, Search, Plus, SlidersHorizontal, Pin, Archive, Database, Brain, Workflow, FileClock, Activity, UserRound, UserPlus, LogIn, Building, FolderKanban, CalendarDays, Atom, TrendingUp, Clock, MessageCircleMore, ChevronLeft, ChevronRight, Menu, X, Sparkles, PanelRight, Mail, Lock, Eye, EyeOff, ArrowLeft, RefreshCw, Download, Upload, AlertCircle, Loader2, GitCompareArrows } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 const DEFAULT_GENERAL_ASSISTANT_PERSONA: Persona = {
@@ -56,6 +57,17 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<MemoryTab>("entities");
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [selectedPersona, setSelectedPersona] = useState<Persona | null>(DEFAULT_GENERAL_ASSISTANT_PERSONA);
+  const [editingPersona, setEditingPersona] = useState<Persona | null>(null);
+  const [personaEditForm, setPersonaEditForm] = useState({
+    name: "",
+    description: "",
+    system_prompt: "",
+    memory_type: "buffer" as MemoryMode,
+    domain: "general",
+    avatar: "🎭",
+    temperature: "0.7",
+  });
+  const [personaEditLoading, setPersonaEditLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isDesktop, setIsDesktop] = useState(() => window.innerWidth >= 1024);
@@ -71,6 +83,9 @@ export default function App() {
   const [memoryTypeOverride, setMemoryTypeOverride] = useState<MemoryMode | "">("");
   const [authMessage, setAuthMessage] = useState<{ text: string; type: "error" | "success" | "info" } | null>(null);
   const [memoryRefreshKey, setMemoryRefreshKey] = useState(0);
+  const [isImportMenuOpen, setIsImportMenuOpen] = useState(false);
+  const [importProgress, setImportProgress] = useState<number | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
 
   // Toast
   const [toast, setToast] = useState<{
@@ -81,6 +96,7 @@ export default function App() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   const showToast = (
     message: string,
@@ -99,6 +115,71 @@ export default function App() {
   const closeAuthMenu = useCallback(() => {
     setIsAuthMenuOpen(false);
   }, []);
+
+  const openPersonaEditor = useCallback((persona: Persona) => {
+    setEditingPersona(persona);
+    setPersonaEditForm({
+      name: persona.name || "",
+      description: persona.description || "",
+      system_prompt: persona.system_prompt || "",
+      memory_type: persona.memory_type || "buffer",
+      domain: persona.domain || "general",
+      avatar: persona.avatar || "🎭",
+      temperature: String(persona.temperature ?? 0.7),
+    });
+  }, []);
+
+  const closePersonaEditor = useCallback(() => {
+    setEditingPersona(null);
+    setPersonaEditLoading(false);
+  }, []);
+
+  const handlePersonaEditSave = useCallback(async () => {
+    if (!editingPersona) return;
+
+    const nextName = personaEditForm.name.trim();
+    const nextSystemPrompt = personaEditForm.system_prompt.trim();
+
+    if (!nextName) {
+      showToast("Persona name is required", "error");
+      return;
+    }
+
+    if (!nextSystemPrompt) {
+      showToast("System prompt is required", "error");
+      return;
+    }
+
+    const temperature = Number(personaEditForm.temperature);
+    if (Number.isNaN(temperature) || temperature < 0 || temperature > 2) {
+      showToast("Temperature must be between 0 and 2", "error");
+      return;
+    }
+
+    setPersonaEditLoading(true);
+
+    try {
+      const updated = await api.updatePersona(editingPersona.id, {
+        name: nextName,
+        description: personaEditForm.description.trim(),
+        system_prompt: nextSystemPrompt,
+        memory_type: personaEditForm.memory_type,
+        domain: personaEditForm.domain.trim() || "general",
+        avatar: personaEditForm.avatar.trim() || "🎭",
+        temperature,
+      }, authContext);
+
+      setPersonas((prev) => prev.map((persona) => (persona.id === updated.id ? updated : persona)));
+      if (selectedPersona?.id === updated.id) {
+        setSelectedPersona(updated);
+      }
+      showToast("Persona updated successfully", "success");
+      closePersonaEditor();
+    } catch {
+      showToast("Failed to update persona", "error");
+      setPersonaEditLoading(false);
+    }
+  }, [authContext, closePersonaEditor, editingPersona, personaEditForm, selectedPersona?.id]);
 
   const syncAuthState = useCallback(async () => {
     const [{ data: userData }, { data: sessionData }] = await Promise.all([
@@ -221,8 +302,22 @@ export default function App() {
       }
       setConversationsLoading(true);
       try {
-        const data = await api.listConversations(search, false, authContext);
-        setConversations(data);
+        const [activeConversations, archivedConversations] = await Promise.all([
+          api.listConversations(search, false, authContext),
+          api.listConversations(search, true, authContext),
+        ]);
+
+        setConversations(
+          [...activeConversations, ...archivedConversations].sort((a, b) => {
+            if (a.is_archived !== b.is_archived) {
+              return a.is_archived ? 1 : -1;
+            }
+            if (a.is_pinned !== b.is_pinned) {
+              return a.is_pinned ? -1 : 1;
+            }
+            return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+          })
+        );
       } catch {
         showToast("Could not load conversations", "error");
       } finally {
@@ -289,6 +384,9 @@ export default function App() {
       const title =
         userMessage.slice(0, 50) + (userMessage.length > 50 ? "..." : "");
       const now = new Date().toISOString();
+      const conversation = conversations.find((conv) => conv.id === convId);
+      const shouldPersistTitle = conversation?.title === "New Chat";
+      const previousTitle = conversation?.title || "New Chat";
 
       setConversations((prev) =>
         [...prev]
@@ -296,7 +394,7 @@ export default function App() {
             conv.id === convId
               ? {
                   ...conv,
-                  title: conv.title === "New Chat" ? title : conv.title,
+                  title: shouldPersistTitle ? title : conv.title,
                   message_count: conv.message_count + 2,
                   updated_at: now,
                 }
@@ -311,8 +409,23 @@ export default function App() {
             );
           })
       );
+
+      if (shouldPersistTitle) {
+        void api.updateConversation(
+          convId,
+          { title },
+          authContext
+        ).catch(() => {
+          setConversations((prev) =>
+            prev.map((conv) =>
+              conv.id === convId ? { ...conv, title: previousTitle } : conv
+            )
+          );
+          showToast("Failed to save conversation title", "error");
+        });
+      }
     },
-    []
+    [conversations, authContext]
   );
 
   // ── Send message ──────────────────────────────────────────────────────
@@ -448,15 +561,86 @@ export default function App() {
     [conversations, authContext]
   );
 
+  const handleArchiveConversation = useCallback(
+    async (id: number) => {
+      const conv = conversations.find((c) => c.id === id);
+      if (!conv) return;
+
+      const wasSelected = selectedConvId === id;
+      const previousSelectedConvId = selectedConvId;
+      const previousMessages = messages;
+
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === id ? { ...c, is_archived: !c.is_archived } : c
+        )
+      );
+
+      if (wasSelected) {
+        setSelectedConvId(null);
+        setMessages([]);
+      }
+
+      try {
+        await api.updateConversation(
+          id,
+          { is_archived: !conv.is_archived },
+          authContext
+        );
+        showToast(
+          conv.is_archived ? "Conversation unarchived" : "Conversation archived",
+          "success"
+        );
+      } catch {
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === id ? { ...c, is_archived: !c.is_archived } : c
+          )
+        );
+        if (wasSelected) {
+          setSelectedConvId(previousSelectedConvId);
+          setMessages(previousMessages);
+        }
+        showToast("Failed to archive", "error");
+      }
+    },
+    [conversations, selectedConvId, messages, authContext]
+  );
+
+  const handleRenameConversation = useCallback(
+    async (id: number, newTitle: string) => {
+      const conversation = conversations.find((c) => c.id === id);
+      if (!conversation) return;
+
+      const previousTitle = conversation.title;
+      setConversations((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, title: newTitle } : c))
+      );
+
+      try {
+        await api.updateConversation(id, { title: newTitle }, authContext)
+        showToast("Conversation renamed", "success");
+      } catch {
+        setConversations((prev) =>
+          prev.map((c) => (c.id === id ? { ...c, title: previousTitle } : c))
+        );
+        showToast("Failed to rename", "error");
+      }
+    },
+    [conversations, authContext]
+  )
+
   // ── Delete conversation ───────────────────────────────────────────────
   const handleDeleteConversation = useCallback(
     async (id: number) => {
+      const wasSelected = selectedConvId === id;
       try {
         await api.deleteConversation(id, authContext);
         setConversations((prev) => prev.filter((c) => c.id !== id));
-        if (selectedConvId === id) {
+        if (wasSelected) {
           setSelectedConvId(null);
           setMessages([]);
+          setCurrentScreen("chat");
         }
         showToast("Conversation deleted", "success");
       } catch {
@@ -504,6 +688,48 @@ export default function App() {
     [selectedConvId, authContext]
   );
 
+  const handleImportClick = useCallback(() => {
+    setIsImportMenuOpen(false);
+    importInputRef.current?.click();
+  }, []);
+
+  const handleImportFileChange = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      event.target.value = "";
+
+      if (!file) return;
+
+      setIsImporting(true);
+      setImportProgress(10);
+
+      try {
+        const text = await file.text();
+        setImportProgress(35);
+
+        let parsed: any;
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          throw new Error("Selected file is not valid JSON.");
+        }
+
+        setImportProgress(70);
+        await api.importConversation(parsed, authContext);
+        setImportProgress(100);
+        await loadConversations(searchQuery);
+        showToast("Conversation imported successfully", "success");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Import failed";
+        showToast(message, "error");
+      } finally {
+        setTimeout(() => setImportProgress(null), 700);
+        setIsImporting(false);
+      }
+    },
+    [authContext, loadConversations, searchQuery]
+  );
+
   // ── Change memory type ─────────────────────────────────────────────────
   const handleChangeMemoryType = useCallback(
     async (memType: MemoryMode) => {
@@ -542,30 +768,93 @@ export default function App() {
       setAuthMessage(null);
       const isRegister = currentScreen === "register";
 
+      const trimmedFullName = form.fullName.trim();
+      const trimmedEmail = form.email.trim();
+      const trimmedPassword = form.password.trim();
+
+      const showAuthError = (text: string) => {
+        setAuthMessage({ text, type: "error" });
+      };
+
+      const mapSupabaseAuthError = (message: string) => {
+        const normalizedMessage = message.toLowerCase();
+
+        if (normalizedMessage.includes("invalid login credentials")) {
+          return "Incorrect email or password. Please try again.";
+        }
+
+        if (normalizedMessage.includes("email not confirmed")) {
+          return "Please verify your email before logging in.";
+        }
+
+        if (normalizedMessage.includes("user already registered")) {
+          return "An account with this email already exists. Please login.";
+        }
+
+        return message;
+      };
+
       try {
         if (isRegister) {
-          if (!form.fullName || !form.email || !form.password || !form.confirmPassword) {
-            setAuthMessage({ text: "Please fill in all fields to continue", type: "error" });
+          if (!trimmedFullName && !trimmedEmail && !trimmedPassword) {
+            showAuthError("Please fill in all fields");
             return;
           }
 
-          if (!/^[a-zA-Z\s]{2,50}$/.test(form.fullName)) {
-            setAuthMessage({ text: "Please enter a valid name (letters only, minimum 2 characters). Numbers and special characters are not allowed.", type: "error" });
+          const trimmedName = form.fullName.trim();
+
+          if (trimmedName.length < 2) {
+            showAuthError("Please enter your full name");
             return;
           }
 
-          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
-            setAuthMessage({ text: "Please enter a valid email address (e.g. name@example.com)", type: "error" });
+          if (!/^[a-zA-Z]+(\s[a-zA-Z]+)*$/.test(trimmedName)) {
+            showAuthError("Name can only contain letters. Multiple spaces are not allowed.");
+            return;
+          }
+
+          if (!trimmedEmail) {
+            showAuthError("Email address is required");
+            return;
+          }
+
+          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+            showAuthError("Please enter a valid email (e.g. name@example.com)");
+            return;
+          }
+
+          if (!trimmedPassword) {
+            showAuthError("Password is required");
             return;
           }
 
           if (form.password.length < 8) {
-            setAuthMessage({ text: "Password must be at least 8 characters long", type: "error" });
+            showAuthError("Password must be at least 8 characters");
+            return;
+          }
+
+          if (!/[A-Z]/.test(form.password)) {
+            showAuthError("Password must contain at least one uppercase letter");
+            return;
+          }
+
+          if (!/\d/.test(form.password)) {
+            showAuthError("Password must contain at least one number");
+            return;
+          }
+
+          if (!/[!@#$%^&*]/.test(form.password)) {
+            showAuthError("Password must contain at least one special character (!@#$%^&*)");
+            return;
+          }
+
+          if (!form.confirmPassword) {
+            showAuthError("Please confirm your password");
             return;
           }
 
           if (form.password !== form.confirmPassword) {
-            setAuthMessage({ text: "Passwords do not match. Please try again", type: "error" });
+            showAuthError("Passwords do not match");
             return;
           }
 
@@ -580,7 +869,7 @@ export default function App() {
           });
 
           if (error) {
-            setAuthMessage({ text: error.message, type: "error" });
+            setAuthMessage({ text: mapSupabaseAuthError(error.message), type: "error" });
             return;
           }
 
@@ -588,13 +877,33 @@ export default function App() {
           setUser(data.user ?? data.session?.user ?? null);
           setAuthMessage({ text: "Account created! Please check your email to verify.", type: "success" });
         } else {
+          if (!trimmedEmail) {
+            showAuthError("Email address is required");
+            return;
+          }
+
+          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+            showAuthError("Please enter a valid email");
+            return;
+          }
+
+          if (!form.password) {
+            showAuthError("Password is required");
+            return;
+          }
+
+          if (!form.password.trim()) {
+            showAuthError("Password cannot be empty");
+            return;
+          }
+
           const { data, error } = await supabase.auth.signInWithPassword({
             email: form.email,
             password: form.password,
           });
 
           if (error) {
-            setAuthMessage({ text: error.message, type: "error" });
+            setAuthMessage({ text: mapSupabaseAuthError(error.message), type: "error" });
             return;
           }
 
@@ -634,8 +943,10 @@ export default function App() {
   }, []);
 
   const currentConversation = conversations.find((c) => c.id === selectedConvId);
-  const pinnedConversations = conversations.filter((c) => c.is_pinned);
-  const recentConversations = conversations.filter((c) => !c.is_pinned);
+  const pinnedConversations = conversations.filter((c) => c.is_pinned && !c.is_archived);
+  const recentConversations = conversations.filter((c) => !c.is_pinned && !c.is_archived);
+  const archivedConversations = conversations.filter((c) => c.is_archived);
+  const [sidebarView, setSidebarView] = useState<"recent" | "archived">("recent");
   const showSidebar = isDesktop ? !sidebarCollapsed : sidebarOpen;
   const authMode =
     currentScreen === "login" || currentScreen === "register"
@@ -816,6 +1127,8 @@ export default function App() {
                           isSelected={selectedConvId === conv.id}
                           onClick={() => handleSelectConversation(conv.id)}
                           onPin={() => handlePinConversation(conv.id)}
+                          onArchive={() => handleArchiveConversation(conv.id)}
+                          onRename={(newTitle) => handleRenameConversation(conv.id, newTitle)}
                           onDelete={() => handleDeleteConversation(conv.id)}
                         />
                       ))}
@@ -823,32 +1136,84 @@ export default function App() {
                   </div>
                 )}
                 <div className={sidebarSectionClass}>
-                  <div className="mb-2 flex items-center gap-1.5 px-1.5">
-                    <Clock className="w-3 h-3 text-[#9CA3AF]" />
-                    <span className="text-[10px] font-semibold text-[#9CA3AF] uppercase tracking-wider">
+                  <div className="mb-2 flex items-center gap-1 px-1.5">
+                    <button
+                      onClick={() => setSidebarView("recent")}
+                      className={`flex-1 py-1 text-[10px] font-semibold rounded-lg transition-colors ${
+                        sidebarView === "recent"
+                          ? "bg-[#F7E9EB] text-[#7A1F2B]"
+                          : "text-[#9CA3AF] hover:text-[#6B7280]"
+                      }`}
+                    >
                       Recent
-                    </span>
+                    </button>
+                    <button
+                      onClick={() => setSidebarView("archived")}
+                      className={`flex-1 py-1 text-[10px] font-semibold rounded-lg transition-colors flex items-center justify-center gap-1 ${
+                        sidebarView === "archived"
+                          ? "bg-[#FFF3E8] text-[#F59E0B]"
+                          : "text-[#9CA3AF] hover:text-[#6B7280]"
+                      }`}
+                    >
+                      <Archive className="w-3 h-3" />
+                      Archived
+                      {archivedConversations.length > 0 && (
+                        <span className="bg-[#F59E0B] text-white rounded-full px-1.5 text-[9px] ml-0.5">
+                          {archivedConversations.length}
+                        </span>
+                      )}
+                    </button>
                   </div>
-                  <div className="space-y-2">
-                    {recentConversations.length === 0 && !pinnedConversations.length ? (
-                      <div className="text-[12px] text-[#9CA3AF] text-center py-6">
-                        No conversations yet.
-                        <br />
-                        Start one above!
-                      </div>
-                    ) : (
-                      recentConversations.map((conv) => (
+                  {sidebarView === "recent" && (
+                    <div className="space-y-2">
+                      {pinnedConversations.map((conv) => (
                         <ConversationItem
                           key={conv.id}
                           conversation={conv}
                           isSelected={selectedConvId === conv.id}
                           onClick={() => handleSelectConversation(conv.id)}
                           onPin={() => handlePinConversation(conv.id)}
+                          onArchive={() => handleArchiveConversation(conv.id)}
+                          onRename={(newTitle) => handleRenameConversation(conv.id, newTitle)}
                           onDelete={() => handleDeleteConversation(conv.id)}
                         />
-                      ))
-                    )}
-                  </div>
+                      ))}
+                      {recentConversations.map((conv) => (
+                        <ConversationItem
+                          key={conv.id}
+                          conversation={conv}
+                          isSelected={selectedConvId === conv.id}
+                          onClick={() => handleSelectConversation(conv.id)}
+                          onPin={() => handlePinConversation(conv.id)}
+                          onArchive={() => handleArchiveConversation(conv.id)}
+                          onRename={(newTitle) => handleRenameConversation(conv.id, newTitle)}
+                          onDelete={() => handleDeleteConversation(conv.id)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  {sidebarView === "archived" && (
+                    <div className="space-y-2">
+                      {archivedConversations.length === 0 ? (
+                        <div className="text-[12px] text-[#9CA3AF] text-center py-6">
+                          No archived conversations
+                        </div>
+                      ) : (
+                        archivedConversations.map((conv) => (
+                          <ConversationItem
+                            key={conv.id}
+                            conversation={conv}
+                            isSelected={selectedConvId === conv.id}
+                            onClick={() => handleSelectConversation(conv.id)}
+                            onPin={() => handlePinConversation(conv.id)}
+                            onArchive={() => handleArchiveConversation(conv.id)}
+                            onRename={(newTitle) => handleRenameConversation(conv.id, newTitle)}
+                            onDelete={() => handleDeleteConversation(conv.id)}
+                          />
+                        ))
+                      )}
+                    </div>
+                  )}
                 </div>
               </>
             )}
@@ -868,6 +1233,7 @@ export default function App() {
               { id: "chat" as Screen, icon: MessageCircleMore, tip: "Chat" },
               { id: "graph" as Screen, icon: Workflow, tip: "Graph" },
               { id: "entities" as Screen, icon: Brain, tip: "Entities" },
+              { id: "comparison" as Screen, icon: GitCompareArrows, tip: "Compare" },
               { id: "personas" as Screen, icon: UserRound, tip: "Personas" },
               { id: "stats" as Screen, icon: TrendingUp, tip: "Stats" },
             ] as const
@@ -977,12 +1343,54 @@ export default function App() {
                 </div>
               </div>
             )}
-            <button
-              className="p-2.5 hover:bg-[#F8F9FF] rounded-xl transition-colors"
-              title="Settings"
-            >
-              <SlidersHorizontal className="w-4.5 h-4.5 text-[#8A94A6]" />
-            </button>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsImportMenuOpen((v) => !v)}
+                className={`p-2.5 rounded-xl transition-colors ${
+                  isImportMenuOpen
+                    ? "bg-[#F0EFFF] text-[#6C63FF]"
+                    : "hover:bg-[#F8F9FF]"
+                }`}
+                title="Settings"
+              >
+                <SlidersHorizontal className="w-4.5 h-4.5 text-[#8A94A6]" />
+              </button>
+
+              {isImportMenuOpen && (
+                <div className="absolute right-0 top-10 z-50 w-64 rounded-xl border border-[#E5E7EB] bg-white shadow-lg overflow-hidden">
+                  <div className="px-4 py-3 border-b border-[#F3F4F6]">
+                    <div className="text-[12px] font-semibold text-[#162033]">
+                      Conversation tools
+                    </div>
+                    <div className="text-[11px] text-[#8A94A6] mt-0.5">
+                      Import JSON exports from the backend
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleImportClick}
+                    disabled={isImporting}
+                    className="w-full text-left px-4 py-3 text-[12px] hover:bg-[#F8F9FF] disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isImporting ? "Importing..." : "Import conversation"}
+                  </button>
+                  <div className="px-4 pb-4">
+                    <div className="h-1.5 rounded-full bg-[#F3F4F6] overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-[#7A1F2B] transition-all duration-300"
+                        style={{ width: `${importProgress ?? 0}%` }}
+                      />
+                    </div>
+                    <div className="mt-2 text-[10px] text-[#9CA3AF]">
+                      {importProgress === null
+                        ? "Ready to import"
+                        : `${importProgress}% complete`}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
             <button
               onClick={() => setIsMemoryPanelOpen((v) => !v)}
               className={`p-2.5 rounded-xl transition-colors ${
@@ -1013,6 +1421,14 @@ export default function App() {
             />
           </div>
         </header>
+
+        <input
+          ref={importInputRef}
+          type="file"
+          accept="application/json,.json"
+          className="hidden"
+          onChange={handleImportFileChange}
+        />
 
         {/* Screen content */}
         <div className="flex-1 overflow-hidden">
@@ -1055,7 +1471,7 @@ export default function App() {
                     {/* Input */}
                     <div className="border-t border-[#E5E7EB] bg-white px-4 py-4 sm:px-6 shrink-0">
                       <div className="max-w-2xl mx-auto">
-                        <div className="flex items-end gap-3 bg-white border border-[#E5E7EB] rounded-[28px] px-4 py-3 focus-within:ring-2 focus-within:ring-[#7A1F2B]/20 focus-within:border-[#D8B7BC]/40 transition-all shadow-[0_2px_12px_rgba(0,0,0,0.05)]">
+                        <div className="flex items-end gap-3 bg-white border border-[#E5E7EB] rounded-[28px] px-2 py-1 focus-within:ring-2 focus-within:ring-[#7A1F2B]/20 focus-within:border-[#D8B7BC]/40 transition-all shadow-[0_2px_12px_rgba(0,0,0,0.05)]">
                           <textarea
                             ref={textareaRef}
                             value={inputValue}
@@ -1074,7 +1490,7 @@ export default function App() {
                             placeholder="Type your message..."
                             rows={1}
                             disabled={isTyping}
-                            className="flex-1 bg-transparent text-[14px] text-[#101827] placeholder-[#98A2B3] resize-none focus:outline-none leading-[1.55] max-h-[120px] overflow-y-auto disabled:opacity-60"
+                            className="flex-1 bg-transparent text-[14px] text-[#101827] placeholder-[#98A2B3] resize-none focus:outline-none leading-[3] max-h-[140px] overflow-y-auto disabled:opacity-60"
                           />
                           <motion.button
                             whileTap={{ scale: 0.9 }}
@@ -1141,6 +1557,15 @@ export default function App() {
             <EntitiesScreen conversationId={selectedConvId} authContext={authContext} />
           )}
 
+          {/* ── MEMORY COMPARISON SCREEN ── */}
+          {currentScreen === "comparison" && (
+            <MemoryComparisonScreen
+              conversations={conversations}
+              personas={personas}
+              authContext={authContext}
+            />
+          )}
+
           {/* ── PERSONAS SCREEN ── */}
           {currentScreen === "personas" && (
             <div className="h-full overflow-y-auto p-6">
@@ -1165,6 +1590,11 @@ export default function App() {
                         persona={persona}
                         isActive={selectedPersona?.id === persona.id}
                         onSelect={() => setSelectedPersona(persona)}
+                        onEdit={
+                          !persona.is_builtin
+                            ? () => openPersonaEditor(persona)
+                            : undefined
+                        }
                         onDelete={
                           !persona.is_builtin
                             ? () => handleDeletePersona(persona.id)
@@ -1189,6 +1619,144 @@ export default function App() {
           {/* ── STATS SCREEN ── */}
           {currentScreen === "stats" && <StatsScreen authContext={authContext} />}
         </div>
+
+        {editingPersona && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 backdrop-blur-sm px-4">
+            <div className="w-full max-w-2xl rounded-2xl border border-[#E5E7EB] bg-white shadow-2xl overflow-hidden">
+              <div className="flex items-center justify-between border-b border-[#F3F4F6] px-5 py-4">
+                <div>
+                  <div className="text-[14px] font-semibold text-[#1A1A2E]">
+                    Edit Persona
+                  </div>
+                  <div className="text-[11px] text-[#9CA3AF] mt-0.5">
+                    Pre-filled from {editingPersona.name}
+                  </div>
+                </div>
+                <button
+                  onClick={closePersonaEditor}
+                  className="p-1.5 rounded-lg hover:bg-[#F8F9FF] transition-colors"
+                >
+                  <X className="w-4 h-4 text-[#6B7280]" />
+                </button>
+              </div>
+
+              <div className="grid gap-3 p-5">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold uppercase tracking-wide text-[#8A94A6] mb-2">
+                      Name *
+                    </label>
+                    <input
+                      value={personaEditForm.name}
+                      onChange={(e) => setPersonaEditForm((f) => ({ ...f, name: e.target.value }))}
+                      className="w-full rounded-xl border border-[#E5E7EB] bg-[#FBFBFD] px-3 py-2.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#7A1F2B]/20"
+                      placeholder="Persona name"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold uppercase tracking-wide text-[#8A94A6] mb-2">
+                      Avatar
+                    </label>
+                    <input
+                      value={personaEditForm.avatar}
+                      onChange={(e) => setPersonaEditForm((f) => ({ ...f, avatar: e.target.value }))}
+                      className="w-full rounded-xl border border-[#E5E7EB] bg-[#FBFBFD] px-3 py-2.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#7A1F2B]/20"
+                      placeholder="🎭"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wide text-[#8A94A6] mb-2">
+                    Description
+                  </label>
+                  <input
+                    value={personaEditForm.description}
+                    onChange={(e) => setPersonaEditForm((f) => ({ ...f, description: e.target.value }))}
+                    className="w-full rounded-xl border border-[#E5E7EB] bg-[#FBFBFD] px-3 py-2.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#7A1F2B]/20"
+                    placeholder="Short description"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wide text-[#8A94A6] mb-2">
+                    System prompt *
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={personaEditForm.system_prompt}
+                    onChange={(e) => setPersonaEditForm((f) => ({ ...f, system_prompt: e.target.value }))}
+                    className="w-full rounded-xl border border-[#E5E7EB] bg-[#FBFBFD] px-3 py-2.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#7A1F2B]/20 resize-none"
+                    placeholder="System prompt"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold uppercase tracking-wide text-[#8A94A6] mb-2">
+                      Memory type
+                    </label>
+                    <select
+                      value={personaEditForm.memory_type}
+                      onChange={(e) => setPersonaEditForm((f) => ({ ...f, memory_type: e.target.value as MemoryMode }))}
+                      className="w-full rounded-xl border border-[#E5E7EB] bg-[#FBFBFD] px-3 py-2.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#7A1F2B]/20"
+                    >
+                      <option value="buffer">Buffer</option>
+                      <option value="summary">Summary</option>
+                      <option value="entity">Entity</option>
+                      <option value="kg">Knowledge Graph</option>
+                      <option value="sequential">Sequential</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold uppercase tracking-wide text-[#8A94A6] mb-2">
+                      Domain
+                    </label>
+                    <input
+                      value={personaEditForm.domain}
+                      onChange={(e) => setPersonaEditForm((f) => ({ ...f, domain: e.target.value }))}
+                      className="w-full rounded-xl border border-[#E5E7EB] bg-[#FBFBFD] px-3 py-2.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#7A1F2B]/20"
+                      placeholder="general"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-semibold uppercase tracking-wide text-[#8A94A6] mb-2">
+                      Temperature
+                    </label>
+                    <input
+                      value={personaEditForm.temperature}
+                      onChange={(e) => setPersonaEditForm((f) => ({ ...f, temperature: e.target.value }))}
+                      className="w-full rounded-xl border border-[#E5E7EB] bg-[#FBFBFD] px-3 py-2.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#7A1F2B]/20"
+                      placeholder="0.7"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-3 pt-1">
+                  <div className="text-[11px] text-[#9CA3AF]">
+                    Name and system prompt are required. Temperature must be between 0 and 2.
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={closePersonaEditor}
+                      className="rounded-xl border border-[#E5E7EB] px-4 py-2.5 text-[13px] font-medium text-[#374151] hover:bg-[#FBFBFD]"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handlePersonaEditSave}
+                      disabled={personaEditLoading}
+                      className="inline-flex items-center gap-2 rounded-xl bg-[#7A1F2B] px-4 py-2.5 text-[13px] font-semibold text-white disabled:opacity-60"
+                    >
+                      {personaEditLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4 opacity-0" />}
+                      Save changes
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Mobile memory panel sheet */}

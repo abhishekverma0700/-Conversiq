@@ -1,5 +1,5 @@
 import React from "react";
-import { Trash2 } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import { motion } from "motion/react";
 import type { Persona } from "../types";
 import { memoryConfig } from "../types";
@@ -8,11 +8,13 @@ export default function PersonaCard({
   persona,
   isActive,
   onSelect,
+  onEdit,
   onDelete,
 }: {
   persona: Persona;
   isActive: boolean;
   onSelect: () => void;
+  onEdit?: () => void;
   onDelete?: () => void;
 }) {
   const mcfg = memoryConfig[persona.memory_type] || memoryConfig.buffer;
@@ -64,14 +66,27 @@ export default function PersonaCard({
           {persona.domain}
         </div>
       </button>
-      {!persona.is_builtin && onDelete && (
-        <button
-          onClick={onDelete}
-          className="absolute top-3 right-3 p-1.5 rounded-full hover:bg-red-50 transition-colors"
-          title="Delete persona"
-        >
-          <Trash2 className="w-3.5 h-3.5 text-[#EF4444]" />
-        </button>
+      {!persona.is_builtin && (onEdit || onDelete) && (
+        <div className="absolute top-3 right-3 flex items-center gap-1">
+          {onEdit && (
+            <button
+              onClick={onEdit}
+              className="p-1.5 rounded-full hover:bg-[#F7E9EB] transition-colors"
+              title="Edit persona"
+            >
+              <Pencil className="w-3.5 h-3.5 text-[#7A1F2B]" />
+            </button>
+          )}
+          {onDelete && (
+            <button
+              onClick={onDelete}
+              className="p-1.5 rounded-full hover:bg-red-50 transition-colors"
+              title="Delete persona"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-[#EF4444]" />
+            </button>
+          )}
+        </div>
       )}
     </motion.div>
   );

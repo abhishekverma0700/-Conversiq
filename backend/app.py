@@ -46,6 +46,10 @@ def create_app():
                 app.logger.warning("Adding missing conversations.user_id column")
                 db.session.execute(text("ALTER TABLE conversations ADD COLUMN user_id TEXT"))
                 db.session.commit()
+            if "is_archived" not in columns:
+                app.logger.warning("Adding missing conversations.is_archived column")
+                db.session.execute(text("ALTER TABLE conversations ADD COLUMN is_archived BOOLEAN DEFAULT 0"))
+                db.session.commit()
         app.logger.info("Database tables ready")
         # Seed builtin personas from data/personas.json if table empty
         try:

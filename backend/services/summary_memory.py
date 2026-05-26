@@ -9,37 +9,46 @@ from langchain_core.messages import HumanMessage
 
 logger = logging.getLogger(__name__)
 
-SUMMARY_PROMPT = """You are a conversation summarizer.
-Summarize the following conversation concisely but completely.
-Preserve all important facts, decisions, names, dates, and key information.
-Write in third person. Be specific.
+SUMMARY_PROMPT = """You are a conversation memory manager.
+Create a comprehensive summary preserving ALL important information.
 
-Conversation to summarize:
+Include:
+- All person names and their roles/descriptions
+- All project names and their details
+- All dates, deadlines, numbers mentioned
+- All decisions made
+- All preferences stated
+- All technical details mentioned
+
+Conversation:
 {conversation}
 
-Write a dense, factual summary in 3-5 sentences:"""
+Write a detailed, factual summary (4-6 sentences).
+Do NOT omit any specific facts, names, or numbers:"""
 
 
-SUMMARY_UPDATE_PROMPT = """You update conversation memory after the assistant has responded.
+SUMMARY_UPDATE_PROMPT = """You are a memory manager for an AI assistant.
+Your job is to maintain a comprehensive, accurate summary of the conversation.
 
-Rules:
-- Use the assistant response as the primary source of truth.
-- Use recent context only to resolve references and maintain continuity.
-- Keep only meaningful facts, decisions, entities, and outcomes.
-- Ignore greetings, filler, and repetitive wording.
-- Avoid duplicate information from the previous summary.
-- Write concise, factual third-person prose.
+RULES:
+- PRESERVE all facts from the previous summary unless explicitly corrected
+- ADD new information from the recent conversation
+- Keep ALL names, dates, numbers, project names, decisions
+- Never remove information unless user explicitly corrected it
+- Write in third person, present tense
+- Be specific and detailed
 
-Previous summary:
+Previous summary (PRESERVE this information):
 {previous_summary}
 
-Recent context:
+Recent conversation (ADD new information from this):
 {recent_context}
 
-Assistant final response (primary source):
+Latest assistant response:
 {assistant_response}
 
-Return an updated summary in 1-3 sentences."""
+Write an updated comprehensive summary (3-6 sentences).
+Include ALL important facts from both previous summary AND recent conversation:"""
 
 
 def _messages_to_text(messages: list) -> str:
@@ -134,7 +143,7 @@ def update_summary_from_ai_response(conversation_id: int, assistant_message_id: 
         )
         return None
 
-    n_recent = max(Config.SUMMARY_INTERVAL, 6)
+    n_recent = max(Config.SUMMARY_INTERVAL, 10)
     recent_window = Message.query.filter(
         Message.conversation_id == conversation_id,
         Message.id <= assistant_message_id,

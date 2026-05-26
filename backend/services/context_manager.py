@@ -21,16 +21,29 @@ def truncate_messages_to_fit(messages: list, token_budget: int) -> list:
     if not messages:
         return messages
 
-    last_message = messages[-1]
-    older_messages = messages[:-1]
-
     if count_messages_tokens(messages) <= token_budget:
         return messages
 
-    while older_messages and count_messages_tokens(older_messages + [last_message]) > token_budget:
-        older_messages.pop(0)
+    # Always keep the most recent conversation context.
+    must_keep = messages[-4:] if len(messages) >= 4 else messages
+    must_keep_tokens = count_messages_tokens(must_keep)
 
-    return older_messages + [last_message]
+    if must_keep_tokens >= token_budget:
+        return must_keep
+
+    remaining_budget = token_budget - must_keep_tokens
+    older = messages[:-4] if len(messages) >= 4 else []
+    selected_older = []
+
+    for msg in reversed(older):
+        msg_tokens = count_tokens(msg.get("content", "")) if isinstance(msg, dict) else count_tokens(str(msg))
+        if remaining_budget - msg_tokens >= 0:
+            selected_older.insert(0, msg)
+            remaining_budget -= msg_tokens
+        else:
+            break
+
+    return selected_older + must_keep
 
 
 def get_token_budget_status(system_prompt: str, memory_text: str, recent_messages: list) -> dict:

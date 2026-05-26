@@ -113,6 +113,10 @@ def send_message(conv_id):
         return jsonify({"error": "Message cannot be empty"}), 400
 
     save_message(conv_id, "user", user_message)
+    if not conv.title or conv.title == "New Chat":
+        conv.title = user_message[:50] + ("..." if len(user_message) > 50 else "")
+        db.session.commit()
+
     system_prompt = get_system_prompt(conv.persona_id)
     memory_type = conv.memory_type
     ai_response = ""
@@ -269,6 +273,12 @@ def stream_message(conv_id):
         return jsonify({"error": "Message cannot be empty"}), 400
 
     save_message(conv_id, "user", user_message)
+    if not conv.title or conv.title == "New Chat":
+        conv.title = user_message[:50] + ("..." if len(user_message) > 50 else "")
+        db.session.commit()
+    if not conv.title or conv.title == "New Chat":
+        conv.title = user_message[:50] + ("..." if len(user_message) > 50 else "")
+        db.session.commit()
 
     system_prompt = get_system_prompt(conv.persona_id)
     memory_type = conv.memory_type
@@ -417,10 +427,6 @@ def stream_message(conv_id):
                         extra_info["summary"] = updated_summary.summary_text
             except Exception:
                 logger.exception("Failed to update summary for conversation %s", conv_id)
-
-            if conv.title == "New Chat":
-                conv.title = user_message[:50] + ("..." if len(user_message) > 50 else "")
-                db.session.commit()
 
             yield _sse_event("done", {
                 "response": ai_response,

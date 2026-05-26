@@ -227,6 +227,16 @@ export const api = {
     return res.json();
   },
 
+  updatePersona: async (id: string, data: object, auth?: AuthRequestContext) => {
+    const res = await fetch(`${API_BASE}/personas/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...buildAuthHeaders(auth) },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error("Failed to update persona");
+    return res.json();
+  },
+
   deletePersona: async (id: string, auth?: AuthRequestContext) => {
     const res = await fetch(`${API_BASE}/personas/${id}`, {
       method: "DELETE",

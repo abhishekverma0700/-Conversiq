@@ -15,6 +15,7 @@ export type Screen =
   | "chat"
   | "graph"
   | "entities"
+  | "comparison"
   | "personas"
   | "stats"
   | "login"

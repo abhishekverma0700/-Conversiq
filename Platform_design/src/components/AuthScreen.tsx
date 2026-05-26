@@ -1,40 +1,34 @@
 import React, { useEffect, useState } from "react";
-import { ArrowLeft, Eye, EyeOff, Lock, LogIn, Mail, UserPlus, UserRound } from "lucide-react";
+import {
+  ArrowLeft,
+  LogIn,
+  UserPlus,
+} from "lucide-react";
 import { motion } from "motion/react";
 import type { AuthFormValues, AuthView } from "../types";
 
 function AuthField({
   label,
   placeholder,
-  type = "text",
-  icon: Icon,
   value,
   onChange,
-  rightSlot,
 }: {
   label: string;
   placeholder: string;
-  type?: string;
-  icon: React.ElementType;
   value: string;
   onChange: (value: string) => void;
-  rightSlot?: React.ReactNode;
 }) {
   return (
     <label className="block space-y-2">
       <span className="text-[12px] font-medium text-[#475569]">{label}</span>
-      <div className="relative">
-        <Icon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94A3B8]" />
-        <input
-          type={type}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          required
-          className="w-full rounded-2xl border border-[#E5E7EB] bg-white py-3 pl-10 pr-12 text-[14px] text-[#101827] placeholder:text-[#94A3B8] shadow-[0_1px_4px_rgba(15,23,42,0.03)] transition-all focus:border-[#D8B7BC] focus:outline-none focus:ring-2 focus:ring-[#7A1F2B]/15"
-        />
-        {rightSlot}
-      </div>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        required
+        className="w-full rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-[14px] text-[#101827] placeholder:text-[#94A3B8] shadow-[0_1px_4px_rgba(15,23,42,0.03)] transition-all focus:border-[#D8B7BC] focus:outline-none focus:ring-2 focus:ring-[#7A1F2B]/15"
+      />
     </label>
   );
 }
@@ -122,7 +116,6 @@ export default function AuthScreen({
                 <AuthField
                   label="Full Name"
                   placeholder="Enter your full name"
-                  icon={UserRound}
                   value={form.fullName}
                   onChange={(value) =>
                     setForm((prev) => ({ ...prev, fullName: value }))
@@ -132,7 +125,6 @@ export default function AuthScreen({
               <AuthField
                 label="Email"
                 placeholder="name@company.com"
-                icon={Mail}
                 value={form.email}
                 onChange={(value) =>
                   setForm((prev) => ({ ...prev, email: value }))
@@ -141,48 +133,18 @@ export default function AuthScreen({
               <AuthField
                 label="Password"
                 placeholder="Enter your password"
-                icon={Lock}
-                type={showPassword ? "text" : "password"}
                 value={form.password}
                 onChange={(value) =>
                   setForm((prev) => ({ ...prev, password: value }))
-                }
-                rightSlot={
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-[#94A3B8] transition-colors hover:bg-[#F8F9FF] hover:text-[#475569]"
-                  >
-                    {showPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </button>
                 }
               />
               {!isLogin && (
                 <AuthField
                   label="Confirm Password"
                   placeholder="Re-enter your password"
-                  icon={Lock}
-                  type={showConfirmPassword ? "text" : "password"}
                   value={form.confirmPassword}
                   onChange={(value) =>
                     setForm((prev) => ({ ...prev, confirmPassword: value }))
-                  }
-                  rightSlot={
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmPassword((v) => !v)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-[#94A3B8] transition-colors hover:bg-[#F8F9FF] hover:text-[#475569]"
-                    >
-                      {showConfirmPassword ? (
-                        <EyeOff className="h-4 w-4" />
-                      ) : (
-                        <Eye className="h-4 w-4" />
-                      )}
-                    </button>
                   }
                 />
               )}
