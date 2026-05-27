@@ -132,22 +132,16 @@ def send_message(conv_id):
         try:
             msg_count = get_message_count(conv_id)
             if msg_count >= 15:
-                memory_type = "sequential"
-                # Update in DB
-                conv.memory_type = "sequential"
+                memory_type = "hybrid"
+                conv.memory_type = "hybrid"
                 db.session.commit()
-                # Add to extra_info so frontend knows
                 extra_info["auto_switched"] = True
-                extra_info["auto_switch_reason"] = (
-                    "Conversation exceeded 15 messages. Switched to Sequential chain for better memory management."
-                )
+                extra_info["auto_switch_reason"] = "Conversation exceeded 15 messages. Switched to Hybrid memory."
         except Exception:
             logger.exception("Failed to check message count for auto-switching")
 
     if memory_type == "buffer":
         history, removed = get_messages_for_prompt(conv_id)
-        # Remove only the LAST message if it matches current user message
-        # to avoid including the just-saved message in history
         if history and history[-1]["content"] == user_message and history[-1]["role"] == "user":
             history_without_current = history[:-1]
         else:
@@ -164,8 +158,6 @@ def send_message(conv_id):
 
     elif memory_type == "summary":
         summary, recent_msgs = get_summary_context_for_prompt(conv_id)
-        # Remove only the LAST message if it matches current user message
-        # to avoid including the just-saved message in history
         if recent_msgs and recent_msgs[-1]["content"] == user_message and recent_msgs[-1]["role"] == "user":
             recent_without_current = recent_msgs[:-1]
         else:
@@ -190,28 +182,22 @@ def send_message(conv_id):
 
     elif memory_type == "entity":
         history, _ = get_messages_for_prompt(conv_id)
-        # Remove only the LAST message if it matches current user message
-        # to avoid including the just-saved message in history
         if history and history[-1]["content"] == user_message and history[-1]["role"] == "user":
             history_without_current = history[:-1]
         else:
             history_without_current = history
         entity_context = get_entity_context_for_prompt(conv_id, user_message)
         chain = build_entity_chain(system_prompt)
-        
-        # Pass entity_context even when it is empty
         ai_response = chain.invoke({
             "user_message": user_message,
             "history": format_messages_for_langchain(history_without_current),
             "entity_context": entity_context if entity_context else "No entities tracked yet.",
-    })
+        })
         token_info = get_token_budget_status(system_prompt, entity_context, history_without_current)
         extra_info["entity_context"] = entity_context
 
     elif memory_type == "kg":
         history, _ = get_messages_for_prompt(conv_id)
-        # Remove only the LAST message if it matches current user message
-        # to avoid including the just-saved message in history
         if history and history[-1]["content"] == user_message and history[-1]["role"] == "user":
             history_without_current = history[:-1]
         else:
@@ -223,14 +209,12 @@ def send_message(conv_id):
             user_message=user_message,
             history_messages=history_without_current,
             kg_context=kg_context
-    )
+        )
         token_info = get_token_budget_status(system_prompt, kg_context, history_without_current)
         extra_info["kg_context"] = kg_context
 
     elif memory_type == "sequential":
         history, _ = get_messages_for_prompt(conv_id)
-        # Remove only the LAST message if it matches current user message
-        # to avoid including the just-saved message in history
         if history and history[-1]["content"] == user_message and history[-1]["role"] == "user":
             history_without_current = history[:-1]
         else:
@@ -266,12 +250,10 @@ def send_message(conv_id):
 
     elif memory_type == "parallel":
         history, _ = get_messages_for_prompt(conv_id)
-        # Remove only the LAST message if it matches current user message
         if history and history[-1]["content"] == user_message and history[-1]["role"] == "user":
             history_without_current = history[:-1]
         else:
             history_without_current = history
-
         result = run_parallel_chain(
             system_prompt=system_prompt,
             user_message=user_message,
@@ -286,12 +268,10 @@ def send_message(conv_id):
 
     elif memory_type == "branching":
         history, _ = get_messages_for_prompt(conv_id)
-        # Remove only the LAST message if it matches current user message
         if history and history[-1]["content"] == user_message and history[-1]["role"] == "user":
             history_without_current = history[:-1]
         else:
             history_without_current = history
-
         result = run_branching_chain(
             system_prompt=system_prompt,
             user_message=user_message,
@@ -303,7 +283,6 @@ def send_message(conv_id):
         extra_info["branch_taken"] = result.get("branch_taken")
         extra_info["entity_context"] = result.get("entity_context")
         extra_info["chain_type"] = result.get("chain_type")
-
         token_info = get_token_budget_status(system_prompt, "", history_without_current)
 
     else:
@@ -331,7 +310,6 @@ def send_message(conv_id):
         extract_entities_from_message(conv_id, ai_response, assistant_msg.id)
         extract_triples_from_message(conv_id, ai_response, assistant_msg.id)
 
-    # After assistant response is saved, update summary memory using the same AI response.
     try:
         if memory_type in ["summary", "sequential"]:
             updated_summary = update_summary_from_ai_response(conv_id, assistant_msg.id)
@@ -365,9 +343,6 @@ def stream_message(conv_id):
     if not conv.title or conv.title == "New Chat":
         conv.title = user_message[:50] + ("..." if len(user_message) > 50 else "")
         db.session.commit()
-    if not conv.title or conv.title == "New Chat":
-        conv.title = user_message[:50] + ("..." if len(user_message) > 50 else "")
-        db.session.commit()
 
     system_prompt = get_system_prompt(conv.persona_id)
     memory_type = conv.memory_type
@@ -380,13 +355,11 @@ def stream_message(conv_id):
         try:
             msg_count = get_message_count(conv_id)
             if msg_count >= 15:
-                memory_type = "sequential"
-                conv.memory_type = "sequential"
+                memory_type = "hybrid"
+                conv.memory_type = "hybrid"
                 db.session.commit()
                 extra_info["auto_switched"] = True
-                extra_info["auto_switch_reason"] = (
-                    "Conversation exceeded 15 messages. Switched to Sequential chain for better memory management."
-                )
+                extra_info["auto_switch_reason"] = "Conversation exceeded 15 messages. Switched to Hybrid memory."
         except Exception:
             logger.exception("Failed to check message count for auto-switching")
 
@@ -453,16 +426,13 @@ def stream_message(conv_id):
     elif memory_type == "sequential":
         history, _ = get_messages_for_prompt(conv_id)
         history_without_current = _trim_current_user_from_history(history, user_message)
-
         intent = classify_intent(user_message)
         extra_info["intent"] = intent
-
         entity_context = ""
         kg_context = ""
         if intent in ["question", "fact"]:
             entity_context = get_entity_context_for_prompt(conv_id, user_message)
             kg_context = get_kg_context_for_prompt(conv_id, user_message)
-
         if entity_context:
             chain = build_entity_chain(system_prompt)
             stream_input = {
@@ -485,7 +455,6 @@ def stream_message(conv_id):
                 "user_message": user_message,
                 "history": format_messages_for_langchain(history_without_current),
             }
-
         token_info = get_token_budget_status(system_prompt, "", history_without_current)
 
     elif memory_type == "hybrid":
@@ -517,24 +486,19 @@ def stream_message(conv_id):
 
     def event_stream():
         chunks = []
-
         try:
             yield _sse_event("thinking", {"status": "AI is thinking"})
-
             for piece in chain.stream(stream_input):
                 text_piece = piece if isinstance(piece, str) else str(piece)
                 if not text_piece:
                     continue
                 chunks.append(text_piece)
                 yield _sse_event("token", {"chunk": text_piece})
-
             ai_response = "".join(chunks).strip()
             if not ai_response:
                 yield _sse_event("error", {"error": "Empty response from model"})
                 return
-
             assistant_msg = save_message(conv_id, "assistant", ai_response)
-
             if memory_type == "entity":
                 extract_entities_from_message(conv_id, ai_response, assistant_msg.id)
             elif memory_type == "kg":
@@ -544,7 +508,6 @@ def stream_message(conv_id):
                 extract_triples_from_message(conv_id, ai_response, assistant_msg.id)
             elif memory_type == "hybrid":
                 HybridMemory(conv_id).update_after_message(ai_response, assistant_msg.id)
-
             try:
                 if memory_type in ["summary", "sequential"]:
                     updated_summary = update_summary_from_ai_response(conv_id, assistant_msg.id)
@@ -552,7 +515,6 @@ def stream_message(conv_id):
                         extra_info["summary"] = updated_summary.summary_text
             except Exception:
                 logger.exception("Failed to update summary for conversation %s", conv_id)
-
             yield _sse_event("done", {
                 "response": ai_response,
                 "token_info": token_info,

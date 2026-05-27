@@ -247,7 +247,7 @@ export default function MemoryPanel({
                       No summary yet
                     </div>
                     <div className="text-[11px] text-[#6B7280] mt-1">
-                      Use Summary memory. Auto-summarizes every 5 messages.
+                      Use Summary memory. Auto-summarizes every N messages based on config.
                     </div>
                   </div>
                 ) : (

@@ -129,6 +129,12 @@ def update_summary_from_ai_response(conversation_id: int, assistant_message_id: 
     This function uses the assistant response together with recent conversation context
     and the previous summary (if any) to produce an updated summary.
     """
+    total_msgs = Message.query.filter_by(
+        conversation_id=conversation_id
+    ).count()
+    if total_msgs % Config.SUMMARY_INTERVAL != 0:
+        logger.info("Skipping summary update: %s messages, interval=%s", total_msgs, Config.SUMMARY_INTERVAL)
+        return get_latest_summary(conversation_id)
     assistant_msg = Message.query.filter_by(
         id=assistant_message_id,
         conversation_id=conversation_id,
