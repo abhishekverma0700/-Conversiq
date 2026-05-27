@@ -585,6 +585,12 @@ def get_kg_triples(conv_id):
 
 
 def get_system_prompt(persona_id: str) -> str:
+    from models.database import Persona
+    
+    persona = Persona.query.filter_by(id=persona_id).first()
+    if persona and persona.system_prompt:
+        return persona.system_prompt
+    
     prompts = {
         "general_assistant": "You are a helpful, friendly AI assistant. Remember everything the user tells you and use it to provide personalized responses.",
         "code_helper": "You are an expert programming assistant. Track all code snippets, function names, file names, and technical decisions. Always reference previous code when relevant.",
