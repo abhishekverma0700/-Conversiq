@@ -94,6 +94,13 @@ def get_stats():
     all_messages = Message.query.filter(Message.conversation_id.in_(conversation_ids)).all() if conversation_ids else []
     total_tokens = sum(m.token_count for m in all_messages)
 
+    # Memory type counts
+    buffer_conversations = Conversation.query.filter_by(memory_type="buffer").count()
+    summary_conversations = Conversation.query.filter_by(memory_type="summary").count()
+    entity_conversations = Conversation.query.filter_by(memory_type="entity").count()
+    kg_conversations = Conversation.query.filter_by(memory_type="kg").count()
+    sequential_conversations = Conversation.query.filter_by(memory_type="sequential").count()
+
     return jsonify({
         "total_conversations": total_conversations,
         "total_messages": total_messages,
@@ -101,5 +108,10 @@ def get_stats():
         "total_kg_triples": total_triples,
         "total_summaries": total_summaries,
         "total_tokens_used": total_tokens,
+        "buffer_conversations": buffer_conversations,
+        "summary_conversations": summary_conversations,
+        "entity_conversations": entity_conversations,
+        "kg_conversations": kg_conversations,
+        "sequential_conversations": sequential_conversations,
         "average_messages_per_conversation": round(total_messages / total_conversations, 1) if total_conversations > 0 else 0
     })

@@ -1,4 +1,4 @@
-const API_BASE = "https://conversiq-2.onrender.com/api";
+const API_BASE = "http://localhost:5000/api";
 
 export type AuthRequestContext = {
   accessToken?: string | null;
@@ -224,16 +224,6 @@ export const api = {
       body: JSON.stringify(data),
     });
     if (!res.ok) throw new Error("Failed to create persona");
-    return res.json();
-  },
-
-  updatePersona: async (id: string, data: object, auth?: AuthRequestContext) => {
-    const res = await fetch(`${API_BASE}/personas/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", ...buildAuthHeaders(auth) },
-      body: JSON.stringify(data),
-    });
-    if (!res.ok) throw new Error("Failed to update persona");
     return res.json();
   },
 

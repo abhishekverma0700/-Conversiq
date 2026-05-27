@@ -2,6 +2,7 @@ from services.buffer_memory import get_messages_for_prompt
 from services.summary_memory import get_summary_context_for_prompt, update_summary_from_ai_response
 from services.entity_memory import get_entity_context_for_prompt, extract_entities_from_message
 from services.kg_memory import get_kg_context_for_prompt, extract_triples_from_message
+from services.hybrid_memory import HybridMemory
 
 
 def get_memory_context(conversation_id: int, memory_type: str, user_message: str) -> dict:
@@ -47,6 +48,17 @@ def get_memory_context(conversation_id: int, memory_type: str, user_message: str
             "context_str": kg_context
         }
 
+    elif memory_type == "hybrid":
+        hybrid_memory = HybridMemory(conversation_id)
+        context = hybrid_memory.get_memory_context(user_message)
+        return {
+            "type": "hybrid",
+            "history": context.get("recent_messages", []),
+            "conversation_summary": context.get("conversation_summary", ""),
+            "relevant_entities": context.get("relevant_entities", ""),
+            "context_str": context.get("context_str", "")
+        }
+
     else:
         history, _ = get_messages_for_prompt(conversation_id)
         return {
@@ -72,5 +84,4 @@ def update_memory_after_message(conversation_id: int, memory_type: str, message_
         update_summary_from_ai_response(conversation_id, message_id)
 
     if memory_type == "hybrid":
-        extract_entities_from_message(conversation_id, message_content, message_id)
-        extract_triples_from_message(conversation_id, message_content, message_id)
+        HybridMemory(conversation_id).update_after_message(message_content, message_id)

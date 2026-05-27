@@ -8,6 +8,7 @@ from services.buffer_memory import get_buffer_messages, save_message, get_messag
 from services.summary_memory import get_summary_context_for_prompt, update_summary_from_ai_response
 from services.entity_memory import extract_entities_from_message, get_entity_context_for_prompt
 from services.kg_memory import extract_triples_from_message, get_kg_context_for_prompt, get_graph_data
+from services.hybrid_memory import HybridMemory
 from services.chain_builder import (
     build_simple_conversation_chain,
     build_summary_chain,
@@ -18,7 +19,9 @@ from services.chain_builder import (
     run_kg_chain_safe,
     run_sequential_chain,
     format_messages_for_langchain,
-    classify_intent
+    classify_intent,
+    run_parallel_chain,
+    run_branching_chain
 )
 from services.context_manager import get_token_budget_status
 
@@ -123,6 +126,24 @@ def send_message(conv_id):
     token_info = {}
     extra_info = {}
 
+    # Auto-switch memory if conversation gets long
+    if memory_type == "buffer":
+        from services.buffer_memory import get_message_count
+        try:
+            msg_count = get_message_count(conv_id)
+            if msg_count >= 15:
+                memory_type = "sequential"
+                # Update in DB
+                conv.memory_type = "sequential"
+                db.session.commit()
+                # Add to extra_info so frontend knows
+                extra_info["auto_switched"] = True
+                extra_info["auto_switch_reason"] = (
+                    "Conversation exceeded 15 messages. Switched to Sequential chain for better memory management."
+                )
+        except Exception:
+            logger.exception("Failed to check message count for auto-switching")
+
     if memory_type == "buffer":
         history, removed = get_messages_for_prompt(conv_id)
         # Remove only the LAST message if it matches current user message
@@ -225,6 +246,66 @@ def send_message(conv_id):
         extra_info["entity_context"] = result["entity_context"]
         token_info = get_token_budget_status(system_prompt, "", history_without_current)
 
+    elif memory_type == "hybrid":
+        hybrid_memory = HybridMemory(conv_id)
+        hybrid_context = hybrid_memory.get_memory_context(user_message)
+        chain = hybrid_memory.build_chain(system_prompt, hybrid_context)
+        ai_response = chain.invoke({"user_message": user_message})
+        token_info = get_token_budget_status(
+            system_prompt,
+            "\n\n".join(
+                part for part in [
+                    hybrid_context.get("conversation_summary", ""),
+                    hybrid_context.get("relevant_entities", ""),
+                ] if part
+            ),
+            hybrid_context.get("recent_messages", []),
+        )
+        extra_info["conversation_summary"] = hybrid_context.get("conversation_summary", "")
+        extra_info["relevant_entities"] = hybrid_context.get("relevant_entities", "")
+
+    elif memory_type == "parallel":
+        history, _ = get_messages_for_prompt(conv_id)
+        # Remove only the LAST message if it matches current user message
+        if history and history[-1]["content"] == user_message and history[-1]["role"] == "user":
+            history_without_current = history[:-1]
+        else:
+            history_without_current = history
+
+        result = run_parallel_chain(
+            system_prompt=system_prompt,
+            user_message=user_message,
+            history_messages=history_without_current,
+            conversation_id=conv_id
+        )
+        ai_response = result["response"]
+        extra_info["intent"] = result.get("intent")
+        extra_info["entity_context"] = result.get("entity_context")
+        extra_info["chain_type"] = result.get("chain_type")
+        token_info = get_token_budget_status(system_prompt, "", history_without_current)
+
+    elif memory_type == "branching":
+        history, _ = get_messages_for_prompt(conv_id)
+        # Remove only the LAST message if it matches current user message
+        if history and history[-1]["content"] == user_message and history[-1]["role"] == "user":
+            history_without_current = history[:-1]
+        else:
+            history_without_current = history
+
+        result = run_branching_chain(
+            system_prompt=system_prompt,
+            user_message=user_message,
+            history_messages=history_without_current,
+            conversation_id=conv_id
+        )
+        ai_response = result["response"]
+        extra_info["intent"] = result.get("intent")
+        extra_info["branch_taken"] = result.get("branch_taken")
+        extra_info["entity_context"] = result.get("entity_context")
+        extra_info["chain_type"] = result.get("chain_type")
+
+        token_info = get_token_budget_status(system_prompt, "", history_without_current)
+
     else:
         history, _ = get_messages_for_prompt(conv_id)
         history_without_current = [m for m in history if m["content"] != user_message]
@@ -239,6 +320,14 @@ def send_message(conv_id):
     elif memory_type == "kg":
         extract_triples_from_message(conv_id, ai_response, assistant_msg.id)
     elif memory_type == "sequential":
+        extract_entities_from_message(conv_id, ai_response, assistant_msg.id)
+        extract_triples_from_message(conv_id, ai_response, assistant_msg.id)
+    elif memory_type == "hybrid":
+        HybridMemory(conv_id).update_after_message(ai_response, assistant_msg.id)
+    elif memory_type == "parallel":
+        extract_entities_from_message(conv_id, ai_response, assistant_msg.id)
+        extract_triples_from_message(conv_id, ai_response, assistant_msg.id)
+    elif memory_type == "branching":
         extract_entities_from_message(conv_id, ai_response, assistant_msg.id)
         extract_triples_from_message(conv_id, ai_response, assistant_msg.id)
 
@@ -284,6 +373,22 @@ def stream_message(conv_id):
     memory_type = conv.memory_type
     token_info = {}
     extra_info = {}
+
+    # Auto-switch memory if conversation gets long
+    if memory_type == "buffer":
+        from services.buffer_memory import get_message_count
+        try:
+            msg_count = get_message_count(conv_id)
+            if msg_count >= 15:
+                memory_type = "sequential"
+                conv.memory_type = "sequential"
+                db.session.commit()
+                extra_info["auto_switched"] = True
+                extra_info["auto_switch_reason"] = (
+                    "Conversation exceeded 15 messages. Switched to Sequential chain for better memory management."
+                )
+        except Exception:
+            logger.exception("Failed to check message count for auto-switching")
 
     chain = None
     stream_input = {}
@@ -383,6 +488,24 @@ def stream_message(conv_id):
 
         token_info = get_token_budget_status(system_prompt, "", history_without_current)
 
+    elif memory_type == "hybrid":
+        hybrid_memory = HybridMemory(conv_id)
+        hybrid_context = hybrid_memory.get_memory_context(user_message)
+        chain = hybrid_memory.build_chain(system_prompt, hybrid_context)
+        stream_input = {"user_message": user_message}
+        token_info = get_token_budget_status(
+            system_prompt,
+            "\n\n".join(
+                part for part in [
+                    hybrid_context.get("conversation_summary", ""),
+                    hybrid_context.get("relevant_entities", ""),
+                ] if part
+            ),
+            hybrid_context.get("recent_messages", []),
+        )
+        extra_info["conversation_summary"] = hybrid_context.get("conversation_summary", "")
+        extra_info["relevant_entities"] = hybrid_context.get("relevant_entities", "")
+
     else:
         history, _ = get_messages_for_prompt(conv_id)
         history_without_current = [m for m in history if m["content"] != user_message]
@@ -419,6 +542,8 @@ def stream_message(conv_id):
             elif memory_type == "sequential":
                 extract_entities_from_message(conv_id, ai_response, assistant_msg.id)
                 extract_triples_from_message(conv_id, ai_response, assistant_msg.id)
+            elif memory_type == "hybrid":
+                HybridMemory(conv_id).update_after_message(ai_response, assistant_msg.id)
 
             try:
                 if memory_type in ["summary", "sequential"]:

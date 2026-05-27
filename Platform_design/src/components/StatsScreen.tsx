@@ -3,6 +3,7 @@ import { Loader2, MessageCircleMore, Send, Database, Workflow, TrendingUp } from
 import { motion } from "motion/react";
 import type { AuthRequestContext } from "../types";
 import { api } from "../app/api";
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
 export default function StatsScreen({ authContext }: { authContext?: AuthRequestContext }) {
   const [realStats, setRealStats] = useState<any>(null);
@@ -94,6 +95,80 @@ export default function StatsScreen({ authContext }: { authContext?: AuthRequest
             </motion.div>
           ))}
         </div>
+
+        {realStats && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div
+              className="bg-white rounded-xl border border-[#E5E7EB] p-5"
+              style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}
+            >
+              <h3 className="text-[14px] font-semibold text-[#1A1A2E] mb-4">
+                Memory Type Distribution
+              </h3>
+              <div className="h-[220px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={[
+                        { name: "Buffer", value: realStats.buffer_conversations ?? 0 },
+                        { name: "Summary", value: realStats.summary_conversations ?? 0 },
+                        { name: "Entity", value: realStats.entity_conversations ?? 0 },
+                        { name: "KG", value: realStats.kg_conversations ?? 0 },
+                        { name: "Sequential", value: realStats.sequential_conversations ?? 0 },
+                      ].filter((d) => d.value > 0)}
+                      dataKey="value"
+                      nameKey="name"
+                      innerRadius={50}
+                      outerRadius={85}
+                      paddingAngle={3}
+                    >
+                      {[
+                        "#7A1F2B",
+                        "#C8A96A",
+                        "#00D4AA",
+                        "#A78BFA",
+                        "#FF8A65",
+                      ].map((color, i) => (
+                        <Cell key={i} fill={color} />
+                      ))}
+                    </Pie>
+                    <Tooltip contentStyle={{ borderRadius: 10, border: "1px solid #E5E7EB", fontSize: 12 }} />
+                    <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div
+              className="bg-white rounded-xl border border-[#E5E7EB] p-5"
+              style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}
+            >
+              <h3 className="text-[14px] font-semibold text-[#1A1A2E] mb-4">
+                Memory Overview
+              </h3>
+              <div className="h-[220px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={[
+                      { name: "Conversations", value: realStats.total_conversations ?? 0 },
+                      { name: "Messages", value: realStats.total_messages ?? 0 },
+                      { name: "Entities", value: realStats.total_entities ?? 0 },
+                      { name: "KG Triples", value: realStats.total_kg_triples ?? 0 },
+                      { name: "Summaries", value: realStats.total_summaries ?? 0 },
+                    ]}
+                    margin={{ left: -8, right: 4, top: 8, bottom: 0 }}
+                  >
+                    <CartesianGrid stroke="#F3F4F6" strokeDasharray="3 3" />
+                    <XAxis dataKey="name" tick={{ fill: "#6B7280", fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fill: "#6B7280", fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <Tooltip contentStyle={{ borderRadius: 10, border: "1px solid #E5E7EB", fontSize: 12 }} />
+                    <Bar dataKey="value" fill="#7A1F2B" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+        )}
 
         {realStats?.total_tokens_used > 0 && (
           <div className="bg-white rounded-xl border border-[#E5E7EB] p-5">

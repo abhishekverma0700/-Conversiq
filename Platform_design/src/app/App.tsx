@@ -334,26 +334,39 @@ export default function App() {
 
   // ── Load conversation messages ────────────────────────────────────────
   const loadConversation = useCallback(async (id: number) => {
+    // Clear messages immediately before loading
+    setMessages([])
+
     try {
-      const data = await api.getConversation(id, authContext);
-      const msgs: Message[] = (data.messages || []).map((m: any) => ({
-        id: String(m.id),
-        role: m.role as MessageRole,
-        content: m.content,
-        timestamp: new Date(m.created_at),
-        token_count: m.token_count,
-      }));
-      setMessages(msgs);
+      const data = await api.getConversation(id, authContext)
+
+      // Only set messages if user hasn't switched to another conversation
+      setSelectedConvId((currentId) => {
+        if (currentId !== id) return currentId // User switched away, ignore
+
+        const msgs: Message[] = (data.messages || []).map((m: any) => ({
+          id: String(m.id),
+          role: m.role as MessageRole,
+          content: m.content,
+          timestamp: new Date(m.created_at),
+          token_count: m.token_count,
+        }))
+        setMessages(msgs)
+        return currentId
+      })
     } catch {
-      showToast("Could not load messages", "error");
+      showToast("Could not load messages", "error")
     }
-  }, [authContext]);
+  }, [authContext])
 
   const handleSelectConversation = useCallback(
     (id: number) => {
+      // Clear messages immediately
+      setMessages([])
       setSelectedConvId(id);
-      setCurrentScreen("chat");
-      setSidebarOpen(false);
+      setCurrentScreen("chat")
+      setSidebarOpen(false)
+      // Load fresh messages
       loadConversation(id);
     },
     [loadConversation]
@@ -506,6 +519,18 @@ export default function App() {
             );
             setMemoryRefreshKey((v) => v + 1);
               updateConversationInSidebar(selectedConvId, text);
+            // If backend auto-switched memory (e.g., buffer -> sequential), notify user and update sidebar
+            if ((payload as any)?.auto_switched) {
+              showToast(
+                (payload as any)?.auto_switch_reason || "Memory auto-switched to Sequential",
+                "info"
+              );
+              setConversations((prev) =>
+                prev.map((c) =>
+                  c.id === selectedConvId ? { ...c, memory_type: "sequential" } : c
+                )
+              );
+            }
           },
           onError: (message) => {
             streamErrored = true;
@@ -1311,6 +1336,9 @@ export default function App() {
                     <option value="summary">Summary Memory</option>
                     <option value="entity">Entity Memory</option>
                     <option value="kg">KG Memory</option>
+                    <option value="hybrid">Hybrid (Summary + Entity)</option>
+                    <option value="parallel">Parallel Chain</option>
+                    <option value="branching">Branching Chain</option>
                     <option value="sequential">Sequential Chain</option>
                   </select>
                 </>

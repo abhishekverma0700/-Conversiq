@@ -8,7 +8,7 @@ import {
   Sparkles,
 } from "lucide-react";
 
-export type MemoryMode = "buffer" | "summary" | "entity" | "kg" | "sequential";
+export type MemoryMode = "buffer" | "summary" | "entity" | "kg" | "sequential" | "hybrid"| "parallel" | "branching";;
 export type EntityType = "person" | "org" | "project" | "date" | "concept" | "general";
 export type MessageRole = "user" | "assistant";
 export type Screen =
@@ -132,6 +132,24 @@ export const memoryConfig: Record<
     label: "Sequential",
     dot: "#B76E4E",
   },
+  hybrid: {
+    color: "#5B7CFA",
+    bg: "#EAF0FF",
+    label: "Hybrid",
+    dot: "#5B7CFA",
+  },
+  parallel: {
+  color: "#10B981",
+  bg: "#ECFDF5",
+  label: "Parallel",
+  dot: "#10B981",
+},
+branching: {
+  color: "#8B5CF6",
+  bg: "#F5F3FF",
+  label: "Branching",
+  dot: "#8B5CF6",
+},
 };
 
 export const entityConfig: Record<

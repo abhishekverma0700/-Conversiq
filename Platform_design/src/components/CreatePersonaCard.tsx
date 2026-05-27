@@ -110,6 +110,7 @@ export default function CreatePersonaCard({
           <option value="summary">Summary</option>
           <option value="entity">Entity</option>
           <option value="kg">Knowledge Graph</option>
+          <option value="hybrid">Hybrid (Summary + Entity)</option>
           <option value="sequential">Sequential</option>
         </select>
         <input
