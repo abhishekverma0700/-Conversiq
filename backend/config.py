@@ -1,23 +1,30 @@
 import os
 from dotenv import load_dotenv
+
 load_dotenv()
+
+_BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+
 class Config:
     SECRET_KEY = os.getenv("FLASK_SECRET_KEY")
     if not SECRET_KEY and not os.getenv("FLASK_DEBUG"):
         raise RuntimeError("FLASK_SECRET_KEY must be set in production")
-    DEBUG=os.getenv("FLASK_DEBUG","True")=="True"
-    SUPABASE_JWT_SECRET=os.getenv("SUPABASE_JWT_SECRET")
+    DEBUG = os.getenv("FLASK_DEBUG", "True") == "True"
+    SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
 
-    SQLALCHEMY_DATABASE_URI=os.getenv("DATABASE_URL","sqlite:///conversional_ai.db")
-    SQLALCHEMY_TRACK_MODIFICATIONS=False
+    SQLALCHEMY_DATABASE_URI = os.getenv(
+        "DATABASE_URL",
+        f"sqlite:///{os.path.join(_BASE_DIR, 'conversional_ai.db')}"
+    )
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-    SUMMARY_INTERVAL=int(os.getenv("SUMMARY_INTERVAL",5))
-    MAX_BUFFER_MESSAGES=int(os.getenv("MAX_BUFFER_MESSAGES",20))
+    SUMMARY_INTERVAL = int(os.getenv("SUMMARY_INTERVAL", 5))
+    MAX_BUFFER_MESSAGES = int(os.getenv("MAX_BUFFER_MESSAGES", 20))
 
-    TOKEN_BUDGET=int(os.getenv("TOKEN_BUDGET",6000))
-    TOKEN_SYSTEM_PROMPT=500
-    TOKEN_MEMORY=1000
-    TOKEN_RECENT_MSGS=3000
-    TOKEN_GENERATION=1500
+    TOKEN_BUDGET = int(os.getenv("TOKEN_BUDGET", 6000))
+    TOKEN_SYSTEM_PROMPT = 500
+    TOKEN_MEMORY = 1000
+    TOKEN_RECENT_MSGS = 3000
+    TOKEN_GENERATION = 1500
