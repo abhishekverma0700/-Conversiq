@@ -126,7 +126,6 @@ def send_message(conv_id):
     token_info = {}
     extra_info = {}
 
-    # Auto-switch memory if conversation gets long
     if memory_type == "buffer":
         from services.buffer_memory import get_message_count
         try:
@@ -147,11 +146,7 @@ def send_message(conv_id):
         else:
             history_without_current = history
         chain = build_simple_conversation_chain(system_prompt)
-        ai_response = run_conversation_chain(
-            chain,
-            user_message=user_message,
-            history_messages=history_without_current
-        )
+        ai_response = run_conversation_chain(chain, user_message=user_message, history_messages=history_without_current)
         token_info = get_token_budget_status(system_prompt, "", history_without_current)
         if removed > 0:
             token_info["truncated_messages"] = removed
@@ -164,19 +159,10 @@ def send_message(conv_id):
             recent_without_current = recent_msgs
         if not summary:
             chain = build_simple_conversation_chain(system_prompt)
-            ai_response = run_conversation_chain(
-                chain,
-                user_message=user_message,
-                history_messages=recent_without_current
-            )
+            ai_response = run_conversation_chain(chain, user_message=user_message, history_messages=recent_without_current)
         else:
             chain = build_summary_chain(system_prompt)
-            ai_response = run_conversation_chain(
-                chain,
-                user_message=user_message,
-                history_messages=recent_without_current,
-                summary=summary
-            )
+            ai_response = run_conversation_chain(chain, user_message=user_message, history_messages=recent_without_current, summary=summary)
         token_info = get_token_budget_status(system_prompt, summary or "", recent_without_current)
         extra_info["summary"] = summary
 
@@ -204,12 +190,7 @@ def send_message(conv_id):
             history_without_current = history
         kg_context = get_kg_context_for_prompt(conv_id, user_message)
         chain = build_kg_chain(system_prompt)
-        ai_response = run_kg_chain_safe(
-            chain,
-            user_message=user_message,
-            history_messages=history_without_current,
-            kg_context=kg_context
-        )
+        ai_response = run_kg_chain_safe(chain, user_message=user_message, history_messages=history_without_current, kg_context=kg_context)
         token_info = get_token_budget_status(system_prompt, kg_context, history_without_current)
         extra_info["kg_context"] = kg_context
 
@@ -219,12 +200,7 @@ def send_message(conv_id):
             history_without_current = history[:-1]
         else:
             history_without_current = history
-        result = run_sequential_chain(
-            system_prompt=system_prompt,
-            user_message=user_message,
-            history_messages=history_without_current,
-            conversation_id=conv_id
-        )
+        result = run_sequential_chain(system_prompt=system_prompt, user_message=user_message, history_messages=history_without_current, conversation_id=conv_id)
         ai_response = result["response"]
         extra_info["intent"] = result["intent"]
         extra_info["entity_context"] = result["entity_context"]
@@ -237,12 +213,7 @@ def send_message(conv_id):
         ai_response = chain.invoke({"user_message": user_message})
         token_info = get_token_budget_status(
             system_prompt,
-            "\n\n".join(
-                part for part in [
-                    hybrid_context.get("conversation_summary", ""),
-                    hybrid_context.get("relevant_entities", ""),
-                ] if part
-            ),
+            "\n\n".join(part for part in [hybrid_context.get("conversation_summary", ""), hybrid_context.get("relevant_entities", "")] if part),
             hybrid_context.get("recent_messages", []),
         )
         extra_info["conversation_summary"] = hybrid_context.get("conversation_summary", "")
@@ -254,12 +225,7 @@ def send_message(conv_id):
             history_without_current = history[:-1]
         else:
             history_without_current = history
-        result = run_parallel_chain(
-            system_prompt=system_prompt,
-            user_message=user_message,
-            history_messages=history_without_current,
-            conversation_id=conv_id
-        )
+        result = run_parallel_chain(system_prompt=system_prompt, user_message=user_message, history_messages=history_without_current, conversation_id=conv_id)
         ai_response = result["response"]
         extra_info["intent"] = result.get("intent")
         extra_info["entity_context"] = result.get("entity_context")
@@ -272,12 +238,7 @@ def send_message(conv_id):
             history_without_current = history[:-1]
         else:
             history_without_current = history
-        result = run_branching_chain(
-            system_prompt=system_prompt,
-            user_message=user_message,
-            history_messages=history_without_current,
-            conversation_id=conv_id
-        )
+        result = run_branching_chain(system_prompt=system_prompt, user_message=user_message, history_messages=history_without_current, conversation_id=conv_id)
         ai_response = result["response"]
         extra_info["intent"] = result.get("intent")
         extra_info["branch_taken"] = result.get("branch_taken")
@@ -349,7 +310,6 @@ def stream_message(conv_id):
     token_info = {}
     extra_info = {}
 
-    # Auto-switch memory if conversation gets long
     if memory_type == "buffer":
         from services.buffer_memory import get_message_count
         try:
@@ -464,16 +424,66 @@ def stream_message(conv_id):
         stream_input = {"user_message": user_message}
         token_info = get_token_budget_status(
             system_prompt,
-            "\n\n".join(
-                part for part in [
-                    hybrid_context.get("conversation_summary", ""),
-                    hybrid_context.get("relevant_entities", ""),
-                ] if part
-            ),
+            "\n\n".join(part for part in [hybrid_context.get("conversation_summary", ""), hybrid_context.get("relevant_entities", "")] if part),
             hybrid_context.get("recent_messages", []),
         )
         extra_info["conversation_summary"] = hybrid_context.get("conversation_summary", "")
         extra_info["relevant_entities"] = hybrid_context.get("relevant_entities", "")
+
+    # ✅ NAYA — parallel streaming
+    elif memory_type == "parallel":
+        history, _ = get_messages_for_prompt(conv_id)
+        history_without_current = _trim_current_user_from_history(history, user_message)
+        entity_context = get_entity_context_for_prompt(conv_id, user_message)
+        if entity_context:
+            chain = build_entity_chain(system_prompt)
+            stream_input = {
+                "user_message": user_message,
+                "history": format_messages_for_langchain(history_without_current),
+                "entity_context": entity_context,
+            }
+        else:
+            chain = build_simple_conversation_chain(system_prompt)
+            stream_input = {
+                "user_message": user_message,
+                "history": format_messages_for_langchain(history_without_current),
+            }
+        token_info = get_token_budget_status(system_prompt, "", history_without_current)
+        extra_info["chain_type"] = "parallel"
+
+    # ✅ NAYA — branching streaming
+    elif memory_type == "branching":
+        history, _ = get_messages_for_prompt(conv_id)
+        history_without_current = _trim_current_user_from_history(history, user_message)
+        intent = classify_intent(user_message)
+        extra_info["intent"] = intent
+        entity_context = get_entity_context_for_prompt(conv_id, user_message)
+        kg_context = get_kg_context_for_prompt(conv_id, user_message)
+        if intent in ["question", "fact"] and entity_context:
+            chain = build_entity_chain(system_prompt)
+            stream_input = {
+                "user_message": user_message,
+                "history": format_messages_for_langchain(history_without_current),
+                "entity_context": entity_context,
+            }
+            extra_info["branch_taken"] = "entity"
+        elif intent == "instruction" and kg_context:
+            chain = build_kg_chain(system_prompt)
+            stream_input = {
+                "user_message": user_message,
+                "history": format_messages_for_langchain(history_without_current),
+                "kg_context": kg_context,
+            }
+            extra_info["branch_taken"] = "kg"
+        else:
+            chain = build_simple_conversation_chain(system_prompt)
+            stream_input = {
+                "user_message": user_message,
+                "history": format_messages_for_langchain(history_without_current),
+            }
+            extra_info["branch_taken"] = "simple"
+        token_info = get_token_budget_status(system_prompt, "", history_without_current)
+        extra_info["chain_type"] = "branching"
 
     else:
         history, _ = get_messages_for_prompt(conv_id)
@@ -508,6 +518,12 @@ def stream_message(conv_id):
                 extract_triples_from_message(conv_id, ai_response, assistant_msg.id)
             elif memory_type == "hybrid":
                 HybridMemory(conv_id).update_after_message(ai_response, assistant_msg.id)
+            elif memory_type == "parallel":
+                extract_entities_from_message(conv_id, ai_response, assistant_msg.id)
+                extract_triples_from_message(conv_id, ai_response, assistant_msg.id)
+            elif memory_type == "branching":
+                extract_entities_from_message(conv_id, ai_response, assistant_msg.id)
+                extract_triples_from_message(conv_id, ai_response, assistant_msg.id)
             try:
                 if memory_type in ["summary", "sequential"]:
                     updated_summary = update_summary_from_ai_response(conv_id, assistant_msg.id)
@@ -586,11 +602,9 @@ def get_kg_triples(conv_id):
 
 def get_system_prompt(persona_id: str) -> str:
     from models.database import Persona
-    
     persona = Persona.query.filter_by(id=persona_id).first()
     if persona and persona.system_prompt:
         return persona.system_prompt
-    
     prompts = {
         "general_assistant": "You are a helpful, friendly AI assistant. Remember everything the user tells you and use it to provide personalized responses.",
         "code_helper": "You are an expert programming assistant. Track all code snippets, function names, file names, and technical decisions. Always reference previous code when relevant.",
