@@ -66,12 +66,9 @@ def get_latest_summary(conversation_id: int):
 
 
 def create_summary(conversation_id: int, messages_to_summarize: list) -> ConversationSummary:
-    """Create and save a summary using the LLM."""
     conv_text = _messages_to_text(messages_to_summarize)
-
     llm = get_precise_llm()
     prompt = SUMMARY_PROMPT.format(conversation=conv_text)
-
     try:
         response = llm.invoke([HumanMessage(content=prompt)])
         summary_text = response.content.strip()
@@ -87,16 +84,11 @@ def create_summary(conversation_id: int, messages_to_summarize: list) -> Convers
     )
     db.session.add(summary)
     db.session.commit()
-
     logger.info("Summary created: %s...", summary_text[:100])
     return summary
 
 
 def get_summary_context_for_prompt(conversation_id: int) -> tuple:
-    """
-    Return the summary and recent messages for the prompt.
-    """
-    # Fetch all messages
     all_messages = Message.query.filter_by(
         conversation_id=conversation_id
     ).order_by(Message.created_at.asc()).all()
@@ -106,35 +98,31 @@ def get_summary_context_for_prompt(conversation_id: int) -> tuple:
 
     msgs_as_dicts = [{"role": m.role, "content": m.content} for m in all_messages]
     total_msgs = len(msgs_as_dicts)
-
     logger.info("Total messages: %s, Summary interval: %s", total_msgs, Config.SUMMARY_INTERVAL)
 
-    # For prompting, return the most recent N messages (used as recent context).
     n_recent = Config.SUMMARY_INTERVAL
-    if total_msgs >= n_recent:
-        recent_messages = msgs_as_dicts[-n_recent:]
-    else:
-        recent_messages = msgs_as_dicts
+    recent_messages = msgs_as_dicts[-n_recent:] if total_msgs >= n_recent else msgs_as_dicts
 
-    # Fetch the latest summary
     latest_summary = get_latest_summary(conversation_id)
     summary_text = latest_summary.summary_text if latest_summary else ""
-
     return summary_text, recent_messages
 
 
 def update_summary_from_ai_response(conversation_id: int, assistant_message_id: int) -> ConversationSummary:
-    """
-    Generate or update the conversation summary after an assistant response is produced.
-    This function uses the assistant response together with recent conversation context
-    and the previous summary (if any) to produce an updated summary.
-    """
     total_msgs = Message.query.filter_by(
         conversation_id=conversation_id
     ).count()
-    if total_msgs % Config.SUMMARY_INTERVAL != 0:
-        logger.info("Skipping summary update: %s messages, interval=%s", total_msgs, Config.SUMMARY_INTERVAL)
+
+    # Pehle SUMMARY_INTERVAL messages hone chahiye
+    if total_msgs < Config.SUMMARY_INTERVAL:
+        logger.info("Not enough messages yet: %s/%s", total_msgs, Config.SUMMARY_INTERVAL)
         return get_latest_summary(conversation_id)
+
+    # Har N messages pe hi summary banao
+    if total_msgs % Config.SUMMARY_INTERVAL != 0:
+        logger.info("Skipping summary: %s messages, interval=%s", total_msgs, Config.SUMMARY_INTERVAL)
+        return get_latest_summary(conversation_id)
+
     assistant_msg = Message.query.filter_by(
         id=assistant_message_id,
         conversation_id=conversation_id,
@@ -143,7 +131,7 @@ def update_summary_from_ai_response(conversation_id: int, assistant_message_id: 
 
     if not assistant_msg:
         logger.warning(
-            "Skipping summary update: assistant message not found (conversation_id=%s, message_id=%s)",
+            "Assistant message not found: conv=%s, msg=%s",
             conversation_id,
             assistant_message_id,
         )
@@ -185,15 +173,11 @@ def update_summary_from_ai_response(conversation_id: int, assistant_message_id: 
     )
     db.session.add(summary)
     db.session.commit()
-
-    logger.info("Summary updated from AI response: %s...", summary_text[:100])
+    logger.info("Summary updated: %s...", summary_text[:100])
     return summary
 
 
 def trigger_summary_now(conversation_id: int) -> str:
-    """
-    Force a summary manually.
-    """
     all_messages = Message.query.filter_by(
         conversation_id=conversation_id
     ).order_by(Message.created_at.asc()).all()
