@@ -14,3 +14,6 @@ sqlalchemy==2.0.35
 
 gunicorn==21.0.0
 langchain-groq==0.1.9
+
+PyJWT[crypto]
+requests
